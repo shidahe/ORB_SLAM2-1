@@ -34,7 +34,7 @@
 
 #define covisN 7
 #define sigmaI 20
-#define lambdaG 15//8
+#define lambdaG 8//8
 #define lambdaL 80
 #define lambdaTheta 45  // 45
 #define lambdaN 3
@@ -103,6 +103,8 @@ public:
             return mbFinishRequested;
         }
 
+    bool mbFinished;
+
 private:
         bool mbFinishRequested;
         ORB_SLAM2::Map* mpMap;
@@ -125,6 +127,8 @@ private:
         void Equation14(depthHo& dHjn, float& depthp, cv::Mat& xp, cv::Mat& rji, cv::Mat& tji, float* res);
         cv::Mat ComputeFundamental(ORB_SLAM2::KeyFrame *&pKF1, ORB_SLAM2::KeyFrame *&pKF2);
         cv::Mat GetSkewSymmetricMatrix(const cv::Mat &v);
+
+        std::vector<float> GetRotInPlane(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::KeyFrame* kf2);
 
 protected:
             std::mutex mMutexSemiDense;

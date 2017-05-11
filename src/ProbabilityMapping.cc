@@ -76,6 +76,7 @@ float bilinear(const cv::Mat& img, const float& y, const float& x)
 ProbabilityMapping::ProbabilityMapping(ORB_SLAM2::Map* pMap):mpMap(pMap)
 {
  mbFinishRequested = false; //init
+    mbFinished = false;
 }
 
 void ProbabilityMapping::Run()
@@ -85,8 +86,37 @@ void ProbabilityMapping::Run()
         if(CheckFinish()) break;
         sleep(1);
         //TestSemiDenseViewer();
-        SemiDenseLoop();
     }
+
+    SemiDenseLoop();
+
+    std::string strFileName("semi_pointcloud.obj");
+    std::ofstream fileOut(strFileName.c_str(), std::ios::out);
+    if(!fileOut){
+        std::cerr << "Failed to save points on line" << std::endl;
+        return;
+    }
+    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    for (size_t indKF = 0; indKF < vpKFs.size(); indKF++) {
+        ORB_SLAM2::KeyFrame* kf = vpKFs[indKF];
+        if(! kf->semidense_flag_) continue;
+        for(size_t y = 0; y< kf->im_.rows; y++)
+            for(size_t x = 0; x< kf->im_.cols; x++)
+            {
+
+                Eigen::Vector3f Pw  (kf->SemiDensePointSets_.at<float>(y,3*x), kf->SemiDensePointSets_.at<float>(y,3*x+1), kf->SemiDensePointSets_.at<float>(y,3*x+2));
+                if(Pw[2]>0)
+                {
+                    fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2]) << std::endl;
+                }
+            }
+
+    }
+    fileOut.flush();
+    fileOut.close();
+    std::cout << "saved semi dense point cloud" << std::endl;
+
+    mbFinished = true;
 }
 /*
  *    TestSemiDenseViewer:
@@ -143,7 +173,7 @@ void ProbabilityMapping::SemiDenseLoop(){
   cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
   if(vpKFs.size() < covisN+3){return;}
 
-  for(size_t i =0;i < vpKFs.size(); i++ )
+  for(size_t i =0;i < vpKFs.size()-5; i++ )
   {
 /*
       pcl::PointCloud<pcl::PointXYZ>::Ptr cloudPtr(new pcl::PointCloud<pcl::PointXYZ>);
@@ -346,7 +376,11 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
 
     // condition 3:
     //if(abs(th_grad - ( th_pi + th_rot )) > lambdaTheta)continue;
-    if(abs( kf2->GradTheta.at<float>(vj,uj) -  th_pi ) > lambdaTheta)continue;
+      std::vector<float> rot = GetRotInPlane(kf1, kf2);
+      std::sort(rot.begin(), rot.end());
+      float medianRot = rot[(rot.size()-1)/2];
+
+    if(abs( kf2->GradTheta.at<float>(vj,uj) -  th_pi - medianRot) > lambdaTheta)continue;
 
      float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
      float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
@@ -403,6 +437,24 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
      ComputeInvDepthHypothesis(kf1, kf2, ustar, ustar_var, a, b, c, dh,x,y);
   }
 
+}
+
+std::vector<float> ProbabilityMapping::GetRotInPlane(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::KeyFrame* kf2){
+    std::vector<ORB_SLAM2::MapPoint*> vMPs1 = kf1->GetMapPointMatches();
+    std::vector<ORB_SLAM2::MapPoint*> vMPs2 = kf2->GetMapPointMatches();
+    std::vector<float> rotInPlane;
+    for (size_t idx1 = 0; idx1 < vMPs1.size(); idx1++){
+        if (vMPs1[idx1]){
+            for (size_t idx2 = 0; idx2 < vMPs2.size(); idx2++) {
+                if (vMPs2[idx2] == vMPs1[idx1]) {
+                    float angle1 = kf1->GetKeyPointsUn()[idx1].angle;
+                    float angle2 = kf2->GetKeyPointsUn()[idx2].angle;
+                    rotInPlane.push_back(std::abs(angle1 - angle2));
+                }
+            }
+        }
+    }
+    return rotInPlane;
 }
 /*
 void ProbabilityMapping::IntraKeyFrameDepthChecking(std::vector<std::vector<depthHo> >& ho, int imrows, int imcols) {

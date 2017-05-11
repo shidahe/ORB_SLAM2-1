@@ -279,7 +279,7 @@ void System::Shutdown()
 
     // Wait until all thread have effectively stopped
     while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished()  ||
-          !mpViewer->isFinished()      || mpLoopCloser->isRunningGBA())
+          !mpViewer->isFinished()      || mpLoopCloser->isRunningGBA() || !mpSemiDenseMapping->mbFinished)
     {
         usleep(5000);
     }

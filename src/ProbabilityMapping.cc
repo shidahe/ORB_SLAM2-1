@@ -36,7 +36,7 @@
 #include <pcl/io/ply_io.h>
 
 #define DEBUG 1
-//#define InterKeyFrameChecking
+#define InterKeyFrameChecking
 
 void saveMatToCsv(cv::Mat data, std::string filename)
 {
@@ -76,6 +76,7 @@ float bilinear(const cv::Mat& img, const float& y, const float& x)
 ProbabilityMapping::ProbabilityMapping(ORB_SLAM2::Map* pMap):mpMap(pMap)
 {
  mbFinishRequested = false; //init
+    mbFinished = false;
 }
 
 void ProbabilityMapping::Run()
@@ -87,6 +88,34 @@ void ProbabilityMapping::Run()
         //TestSemiDenseViewer();
         SemiDenseLoop();
     }
+
+    std::string strFileName("semi_pointcloud.obj");
+    std::ofstream fileOut(strFileName.c_str(), std::ios::out);
+        if(!fileOut){
+            std::cerr << "Failed to save points on line" << std::endl;
+            return;
+        }
+    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    for (size_t indKF = 0; indKF < vpKFs.size(); indKF++) {
+        ORB_SLAM2::KeyFrame* kf = vpKFs[indKF];
+        if(! kf->semidense_flag_) continue;
+        for(size_t y = 0; y< kf->im_.rows; y++)
+            for(size_t x = 0; x< kf->im_.cols; x++)
+            {
+
+                Eigen::Vector3f Pw  (kf->SemiDensePointSets_.at<float>(y,3*x), kf->SemiDensePointSets_.at<float>(y,3*x+1), kf->SemiDensePointSets_.at<float>(y,3*x+2));
+                if(Pw[2]>0)
+                {
+                    fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2]) << std::endl;
+                }
+            }
+
+    }
+        fileOut.flush();
+        fileOut.close();
+    std::cout << "saved semi dense point cloud" << std::endl;
+
+    mbFinished = true;
 }
 /*
  *    TestSemiDenseViewer:
@@ -194,6 +223,9 @@ void ProbabilityMapping::SemiDenseLoop(){
             {
                 ORB_SLAM2::KeyFrame* kf2 = closestMatches[ j ];
                 cv::Mat F12 = F[j];
+
+                if (kf2->isBad())
+                    continue;
 
                 float best_u(0.0),best_v(0.0);
                 depthHo dh;

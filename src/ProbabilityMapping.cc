@@ -36,7 +36,7 @@
 #include <pcl/io/ply_io.h>
 
 #define DEBUG 1
-//#define InterKeyFrameChecking
+#define InterKeyFrameChecking
 
 void saveMatToCsv(cv::Mat data, std::string filename)
 {
@@ -224,6 +224,9 @@ void ProbabilityMapping::SemiDenseLoop(){
             {
                 ORB_SLAM2::KeyFrame* kf2 = closestMatches[ j ];
                 cv::Mat F12 = F[j];
+
+                if (kf2->isBad())
+                    continue;
 
                 float best_u(0.0),best_v(0.0);
                 depthHo dh;

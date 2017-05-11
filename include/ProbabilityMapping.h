@@ -102,6 +102,7 @@ public:
             //unique_lock<mutex> lock(mMutexFinish);
             return mbFinishRequested;
         }
+    bool mbFinished;
 
     bool mbFinished;
 

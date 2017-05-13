@@ -38,9 +38,6 @@
 
 //#define OnlineLoop
 
-#define InterKeyFrameChecking
-#define InterKeyFrameSmoothing
-
 
 void saveMatToCsv(cv::Mat data, std::string filename)
 {
@@ -97,6 +94,9 @@ void ProbabilityMapping::Run()
 
         SemiDenseLoop();
 
+        //make point position dependent to kf position
+        UpdateAllSemiDensePointSet();
+
         clock_gettime(CLOCK_MONOTONIC, &finish);
         duration = ( finish.tv_sec - start.tv_sec );
         duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
@@ -128,11 +128,9 @@ void ProbabilityMapping::Run()
 
     for (size_t indKF = 0; indKF < vpKFs.size(); indKF++) {
         ORB_SLAM2::KeyFrame* kf = vpKFs[indKF];
+        if( kf->isBad() ) continue;
         if(! kf->semidense_flag_) continue;
-
-#ifdef InterKeyFrameChecking
         if(! kf->interKF_depth_flag_) continue;
-#endif
 
         for(size_t y = 0; y< (size_t)kf->im_.rows; y++) {
             for (size_t x = 0; x < (size_t) kf->im_.cols; x++) {
@@ -212,14 +210,6 @@ void ProbabilityMapping::SemiDenseLoop(){
 
     for(size_t i =0;i < vpKFs.size(); i++ )
     {
-/*
-      pcl::PointCloud<pcl::PointXYZ>::Ptr cloudPtr(new pcl::PointCloud<pcl::PointXYZ>);
-      cloudPtr->width = 640;
-      cloudPtr->height = 480;
-      cloudPtr->is_dense = false;
-      cloudPtr->points.resize(cloudPtr->width * cloudPtr->height);
-*/
-
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
         if(kf->isBad() || kf->semidense_flag_)
             continue;
@@ -260,8 +250,6 @@ void ProbabilityMapping::SemiDenseLoop(){
         cv::Mat image = kf->GetImage();
         cv::Mat image_debug = image.clone();
 
-        // std::vector<std::vector<depthHo> > temp_ho (image.rows, std::vector<depthHo>(image.cols, depthHo()) );
-
         std::vector <cv::Mat> F;
         F.clear();
         for(size_t j=0; j<closestMatches.size(); j++)
@@ -270,7 +258,6 @@ void ProbabilityMapping::SemiDenseLoop(){
             cv::Mat F12 = ComputeFundamental(kf,kf2);
             F.push_back(F12);
         }
-
 
 #pragma omp parallel for schedule(dynamic) collapse(2)
         for(int y = 0+2; y < image.rows-2; y++)
@@ -319,30 +306,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         IntraKeyFrameDepthChecking( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
         IntraKeyFrameDepthGrowing( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
 
-#ifndef InterKeyFrameChecking
-        for(int y = 0+2; y < image.rows-2; y++)
-     {
-       for(int x = 0+2; x< image.cols-2; x++)
-       {
-
-         if(kf->depth_map_.at<float>(y,x) < 0.000001) continue;
-
-         float inv_d = kf->depth_map_.at<float>(y,x);
-         float Z = 1/inv_d ;
-         float X = Z *(x- kf->cx ) / kf->fx;
-         float Y = Z*(y- kf->cy ) / kf->fy;
-
-         cv::Mat Pc = (cv::Mat_<float>(4,1) << X, Y , Z, 1); // point in camera frame.
-         cv::Mat Twc = kf->GetPoseInverse();
-         cv::Mat pos = Twc * Pc;
-
-         kf->SemiDensePointSets_.at<float>(y,3*x+0) = pos.at<float>(0);
-         kf->SemiDensePointSets_.at<float>(y,3*x+1) = pos.at<float>(1);
-         kf->SemiDensePointSets_.at<float>(y,3*x+2) = pos.at<float>(2);
-
-       }
-     }
-#endif
+        UpdateSemiDensePointSet(kf);
 
         kf->semidense_flag_ = true;
 
@@ -355,12 +319,6 @@ void ProbabilityMapping::SemiDenseLoop(){
         //cv::imwrite("grad_image.png",image_debug);
 
     }
-
-    //TODO: make point position dependent to kf position
-
-#ifdef InterKeyFrameChecking
-
-//    cv::Mat sigmaAll;
 
     int num_inter_checked = 0;
     int num_all_neigbors = 0;
@@ -402,34 +360,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         std::cout << "InterKeyFrameDepthChecking " << i << std::endl;
         InterKeyFrameDepthChecking(kf,neighbors);
 
-#pragma omp parallel for schedule(dynamic) collapse(2)
-        for(int y = 0+2; y < kf->im_.rows-2; y++)
-        {
-            for(int x = 0+2; x< kf->im_.cols-2; x++)
-            {
-
-                if(kf->depth_map_.at<float>(y,x) < 0.000001) continue;
-
-//                cv::Mat row( 1,1,CV_32F, cv::Scalar(kf->depth_sigma_.at<float>(y,x)) );
-//                sigmaAll.push_back( row );
-
-                // sigma threshold: mean around 0.02, max 1.0+
-//                if(kf->depth_sigma_.at<float>(y,x) > 0.1) continue;
-
-                float inv_d = kf->depth_map_.at<float>(y,x);
-                float Z = 1/inv_d ;
-                float X = Z *(x- kf->cx ) / kf->fx;
-                float Y = Z *(y- kf->cy ) / kf->fy;
-
-                cv::Mat Pc = (cv::Mat_<float>(4,1) << X, Y , Z, 1); // point in camera frame.
-                cv::Mat Twc = kf->GetPoseInverse();
-                cv::Mat pos = Twc * Pc;
-
-                kf->SemiDensePointSets_.at<float>(y,3*x+0) = pos.at<float>(0);
-                kf->SemiDensePointSets_.at<float>(y,3*x+1) = pos.at<float>(1);
-                kf->SemiDensePointSets_.at<float>(y,3*x+2) = pos.at<float>(2);
-            }
-        }
+        UpdateSemiDensePointSet(kf);
 
         kf->interKF_depth_flag_ = true;
 
@@ -441,6 +372,56 @@ void ProbabilityMapping::SemiDenseLoop(){
 
     std::cout << "all neighbors reconstructed KF: " << num_all_neigbors << "/" << num_inter_checked << std::endl;
 
+}
+
+void ProbabilityMapping::UpdateAllSemiDensePointSet(){
+    unique_lock<mutex> lock(mMutexSemiDense);
+    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    for (size_t i = 0; i < vpKFs.size(); i++){
+        if (vpKFs[i]->poseChanged) {
+            UpdateSemiDensePointSet(vpKFs[i]);
+            vpKFs[i]->poseChanged = false;
+        }
+    }
+}
+
+
+void ProbabilityMapping::UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf){
+
+#pragma omp parallel for schedule(dynamic) collapse(2)
+    for(int y = 0+2; y < kf->im_.rows-2; y++)
+    {
+        for(int x = 0+2; x< kf->im_.cols-2; x++)
+        {
+
+            if (kf->depth_map_.at<float>(y,x) < 0.000001) {
+                kf->SemiDensePointSets_.at<float>(y,3*x+0) = 0.0;
+                kf->SemiDensePointSets_.at<float>(y,3*x+1) = 0.0;
+                kf->SemiDensePointSets_.at<float>(y,3*x+2) = 0.0;
+                continue;
+            }
+
+//                cv::Mat row( 1,1,CV_32F, cv::Scalar(kf->depth_sigma_.at<float>(y,x)) );
+//                sigmaAll.push_back( row );
+
+            // sigma threshold: mean around 0.02, max 1.0+
+//                if(kf->depth_sigma_.at<float>(y,x) > 0.1) continue;
+
+            float inv_d = kf->depth_map_.at<float>(y,x);
+            float Z = 1/inv_d ;
+            float X = Z *(x- kf->cx ) / kf->fx;
+            float Y = Z *(y- kf->cy ) / kf->fy;
+
+            cv::Mat Pc = (cv::Mat_<float>(4,1) << X, Y , Z, 1); // point in camera frame.
+            cv::Mat Twc = kf->GetPoseInverse();
+            cv::Mat pos = Twc * Pc;
+
+            kf->SemiDensePointSets_.at<float>(y,3*x+0) = pos.at<float>(0);
+            kf->SemiDensePointSets_.at<float>(y,3*x+1) = pos.at<float>(1);
+            kf->SemiDensePointSets_.at<float>(y,3*x+2) = pos.at<float>(2);
+        }
+    }
+
 //    cv::Mat sigma_mean,sigma_stddev;
 //    cv::meanStdDev(sigmaAll,sigma_mean,sigma_stddev);
 //
@@ -450,8 +431,8 @@ void ProbabilityMapping::SemiDenseLoop(){
 //    std::cout << "sigma stats: mean(" << sigma_mean << "), std(" << sigma_stddev
 //              << "), min(" << sigma_min << "), max(" << sigma_max << ")" << std::endl;
 
-#endif
 }
+
 
 void ProbabilityMapping::StereoSearchConstraints(ORB_SLAM2::KeyFrame* kf, float* min_depth, float* max_depth){
     std::vector<float> orb_depths = kf->GetAllPointDepths();
@@ -529,7 +510,7 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         }
     }
 
-    if(old_err < 500.0)
+    if(old_err < 1000000.0)
     {
 
         uj_plus = best_pixel + 1;
@@ -1007,7 +988,6 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
     float fy = currentKf->fy;
     float cx = currentKf->cx;
     float cy = currentKf->cy;
-//    int remove_cnt(0);
 
 #pragma omp parallel for schedule(dynamic) collapse(2)
     for (int py = 2; py <rows-2; py++) {
@@ -1117,9 +1097,7 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
             {
                 currentKf->depth_map_.at<float>(py,px) = 0.0;
                 currentKf->depth_sigma_.at<float>(py,px) = 0.0;
-//                remove_cnt++;
             }
-#ifdef InterKeyFrameSmoothing
             else {
                 // gauss newton smoothing
                 cv::Mat xp=(cv::Mat_<float>(3,1) << (px-cx)/fx, (py-cy)/fy,1.0);
@@ -1150,7 +1128,7 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
 //                std::cout << "dp + dpDelta: " << dp << " + " << dpDelta << std::endl;
                 currentKf->depth_map_.at<float>(py,px) = 1/ (dp + dpDelta);
             }
-#endif
+
         } // for py = 0...im.cols-1
     } // for px = 0...im.rows-1
 

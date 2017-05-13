@@ -88,8 +88,11 @@ public:
         void IntraKeyFrameDepthChecking(cv::Mat& depth_map, cv::Mat& depth_sigma, const cv::Mat gradimg);
         void IntraKeyFrameDepthGrowing(cv::Mat& depth_map, cv::Mat& depth_sigma, const cv::Mat gradimg);
 
-    /* * \brief void interKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> > h, int imrows, int imcols):
-         * *         inter-keyframe depth-checking, smoothing, and growing. */
+        void UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf);
+        void UpdateAllSemiDensePointSet();
+
+        /* * \brief void interKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> > h, int imrows, int imcols):
+             * *         inter-keyframe depth-checking, smoothing, and growing. */
         void InterKeyFrameDepthChecking(const cv::Mat& im, ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> >& h);
         void InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKf, std::vector<ORB_SLAM2::KeyFrame*> neighbors);
         void RequestFinish()
@@ -103,7 +106,7 @@ public:
             //unique_lock<mutex> lock(mMutexFinish);
             return mbFinishRequested;
         }
-    bool mbFinished;
+        bool mbFinished;
 
 private:
         bool mbFinishRequested;
@@ -131,7 +134,7 @@ private:
         std::vector<float> GetRotInPlane(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::KeyFrame* kf2);
 
 protected:
-            std::mutex mMutexSemiDense;
+        std::mutex mMutexSemiDense;
 };
 
 #endif

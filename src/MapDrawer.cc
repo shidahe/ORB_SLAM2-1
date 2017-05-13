@@ -96,7 +96,7 @@ void MapDrawer::DrawSemiDense()
     for(size_t i = 0; i < vpKf.size();++i)
     {
         KeyFrame* kf = vpKf[i];
-        if(! kf->semidense_flag_) continue;
+        if(! kf->semidense_flag_ || kf->isBad()) continue;
         draw_cnt ++;
         for(size_t y = 0; y< kf->im_.rows; y++)
           for(size_t x = 0; x< kf->im_.cols; x++)

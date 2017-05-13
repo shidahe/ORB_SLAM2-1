@@ -144,6 +144,7 @@ public:
     cv::Mat depth_sigma_;
     //std::vector< Eigen::Vector3f > SemiDensePointSets_;
     cv::Mat SemiDensePointSets_;
+    bool poseChanged;
 /******************************************/
     //
     static long unsigned int nNextId;

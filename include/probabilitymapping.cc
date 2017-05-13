@@ -95,20 +95,20 @@ void ProbabilityMapping::FirstLoop(ORB_SLAM::KeyFrame *kf, std::vector<std::vect
   ho = temp_ho;
 }
 
-void ProbabilityMapping::StereoSearchConstraints(ORB_SLAM::KeyFrame* kf, float* min_depth, float* max_depth){
-  std::vector<float> orb_depths = kf->GetAllPointDepths(20);
-
-  float sum = std::accumulate(orb_depths.begin(), orb_depths.end(), 0.0);
-  float mean = sum / orb_depths.size();
-
-  std::vector<float> diff(orb_depths.size());
-  std::transform(orb_depths.begin(), orb_depths.end(), diff.begin(), std::bind2nd(std::minus<float>(), mean));
-  float variance = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0)/orb_depths.size();
-  float stdev = std::sqrt(variance);
-
-  *max_depth = mean + 2 * stdev;
-  *min_depth = mean - 2 * stdev;
-}
+//void ProbabilityMapping::StereoSearchConstraints(ORB_SLAM::KeyFrame* kf, float* min_depth, float* max_depth){
+//  std::vector<float> orb_depths = kf->GetAllPointDepths();
+//
+//  float sum = std::accumulate(orb_depths.begin(), orb_depths.end(), 0.0);
+//  float mean = sum / orb_depths.size();
+//
+//  std::vector<float> diff(orb_depths.size());
+//  std::transform(orb_depths.begin(), orb_depths.end(), diff.begin(), std::bind2nd(std::minus<float>(), mean));
+//  float variance = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0)/orb_depths.size();
+//  float stdev = std::sqrt(variance);
+//
+//  *max_depth = mean + 2 * stdev;
+//  *min_depth = mean - 2 * stdev;
+//}
 
 void ProbabilityMapping::EpipolarSearch(ORB_SLAM::KeyFrame* kf1, ORB_SLAM::KeyFrame *kf2, int x, int y, float pixel, cv::Mat grad,
     float min_depth, float max_depth, depthHo *dh) {
@@ -755,12 +755,12 @@ void ProbabilityMapping::GetPixelDepth(int px, int py, ORB_SLAM::KeyFrame* kf, f
     DBG(cout << "depth: " << p << endl)
 }
 
-bool ProbabilityMapping::ChiTest(const depthHo& ha, const depthHo& hb, float* chi_val) {
-    float chi_test = (ha.depth - hb.depth)*(ha.depth - hb.depth) / (ha.sigma*ha.sigma) + (ha.depth - hb.depth)*(ha.depth - hb.depth) / (ha.sigma*ha.sigma);
-    if (chi_val)
-        *chi_val = chi_test;
-    return (chi_test < 5.99);
-}
+//bool ProbabilityMapping::ChiTest(const depthHo& ha, const depthHo& hb, float* chi_val) {
+//    float chi_test = (ha.depth - hb.depth)*(ha.depth - hb.depth) / (ha.sigma*ha.sigma) + (ha.depth - hb.depth)*(ha.depth - hb.depth) / (ha.sigma*ha.sigma);
+//    if (chi_val)
+//        *chi_val = chi_test;
+//    return (chi_test < 5.99);
+//}
 
 void ProbabilityMapping::GetFusion(const std::vector<depthHo>& compatible_ho, depthHo* hypothesis, float* min_sigma) {
     hypothesis->depth = 0;

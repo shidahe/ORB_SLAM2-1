@@ -46,6 +46,11 @@
 
 #define NULL_DEPTH 999
 
+
+#define InterKeyFrameChecking
+//#define InterKeyFrameSmoothing
+
+
 namespace ORB_SLAM2 {
 class KeyFrame;
 class Map;
@@ -60,12 +65,12 @@ class ProbabilityMapping {
 public:
 
 	struct depthHo {
-		float depth;
-		float sigma;
-                Eigen::Vector3f Pw; // point pose in world frame
-                bool supported;
-                depthHo():depth(0.0),sigma(0.0),supported(false),Pw(0.0, 0.0, 0.0){}
-        };
+        depthHo():depth(0.0),sigma(0.0),supported(false),Pw(0.0, 0.0, 0.0){};
+        float depth;
+        float sigma;
+        bool supported;
+        Eigen::Vector3f Pw; // point pose in world frame
+    };
 
         ProbabilityMapping(ORB_SLAM2::Map *pMap);
 
@@ -78,7 +83,7 @@ public:
         /* * \brief void stereo_search_constraints(): return min, max inverse depth */
         void StereoSearchConstraints(ORB_SLAM2::KeyFrame* kf, float* min_depth, float* max_depth);
 	/* * \brief void epipolar_search(): return distribution of inverse depths/sigmas for each pixel */
-        void EpipolarSearch(ORB_SLAM2::KeyFrame *kf1, ORB_SLAM2::KeyFrame *kf2, const int x, const int y, float pixel, float min_depth, float max_depth, depthHo *dh, cv::Mat F12, float &best_u, float &best_v,float th_pi);
+        void EpipolarSearch(ORB_SLAM2::KeyFrame *kf1, ORB_SLAM2::KeyFrame *kf2, const int x, const int y, float pixel, float min_depth, float max_depth, depthHo *dh, cv::Mat F12, float &best_u, float &best_v,float th_pi,float rot);
         void GetSearchRange(float& umin, float& umax, int px, int py, float mind, float maxd, ORB_SLAM2::KeyFrame* kf, ORB_SLAM2::KeyFrame* kf2);
         /* * \brief void inverse_depth_hypothesis_fusion(const vector<depthHo> H, depthHo* dist):
 	 * *         get the parameters of depth hypothesis distrubution from list of depth hypotheses */
@@ -87,10 +92,12 @@ public:
         void IntraKeyFrameDepthChecking(std::vector<std::vector<depthHo> >& ho, int imrows, int imcols);
         //  vector is low.  use depth_map and detph_sigma (cv::Mat)  to speed
         void IntraKeyFrameDepthChecking(cv::Mat& depth_map, cv::Mat& depth_sigma, const cv::Mat gradimg);
-        /* * \brief void interKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> > h, int imrows, int imcols):
+        void IntraKeyFrameDepthGrowing(cv::Mat& depth_map, cv::Mat& depth_sigma, const cv::Mat gradimg);
+
+    /* * \brief void interKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> > h, int imrows, int imcols):
          * *         inter-keyframe depth-checking, smoothing, and growing. */
         void InterKeyFrameDepthChecking(const cv::Mat& im, ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> >& h);
-        void InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKf);
+        void InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKf, std::vector<ORB_SLAM2::KeyFrame*> neighbors);
         void RequestFinish()
         {
             //unique_lock<mutex> lock(mMutexFinish);
@@ -102,8 +109,6 @@ public:
             //unique_lock<mutex> lock(mMutexFinish);
             return mbFinishRequested;
         }
-    bool mbFinished;
-
     bool mbFinished;
 
 private:

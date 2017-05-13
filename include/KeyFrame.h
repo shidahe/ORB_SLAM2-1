@@ -127,7 +127,7 @@ public:
     vector< cv::KeyPoint > GetKeyPointsUn() const;
     cv::Mat GetCalibrationMatrix() const;
     DBoW2::FeatureVector GetFeatureVector();
-    std::vector<float> GetAllPointDepths(int q = 2); //modeled after: float ComputeSceneMedianDepth(int q = 2);
+    std::vector<float> GetAllPointDepths(); //modeled after: float ComputeSceneMedianDepth(int q = 2);
 
     // The following variables are accesed from only 1 thread or never change (no mutex needed).
 public:
@@ -136,6 +136,7 @@ public:
     cv::Mat im_;
     cv::Mat rgb_;
     bool semidense_flag_;  // whether this frame have build dense map or not?
+    bool interKF_depth_flag_; // for inter kf depth check
     std::vector<std::vector<ProbabilityMapping::depthHo> > SemiDenseMatrix;
     cv::Mat GradImg,GradTheta;
     double I_stddev;

@@ -97,6 +97,9 @@ void MapDrawer::DrawSemiDense()
     {
         KeyFrame* kf = vpKf[i];
         if(! kf->semidense_flag_) continue;
+#ifdef InterKeyFrameChecking
+        if(! kf->interKF_depth_flag_) continue;
+#endif
         draw_cnt ++;
         for(size_t y = 0; y< kf->im_.rows; y++)
           for(size_t x = 0; x< kf->im_.cols; x++)

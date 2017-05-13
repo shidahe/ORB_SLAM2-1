@@ -41,7 +41,8 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     mvInvLevelSigma2(F.mvInvLevelSigma2), mnMinX(F.mnMinX), mnMinY(F.mnMinY), mnMaxX(F.mnMaxX),
     mnMaxY(F.mnMaxY), mK(F.mK), mvpMapPoints(F.mvpMapPoints), mpKeyFrameDB(pKFDB),
     mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
-    mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap), im_(F.im_.clone()),rgb_(F.rgb_.clone()),semidense_flag_(false),
+    mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap), im_(F.im_.clone()),rgb_(F.rgb_.clone()),
+    semidense_flag_(false),interKF_depth_flag_(false),
     SemiDenseMatrix(im_.rows, std::vector<ProbabilityMapping:: depthHo>(im_.cols, ProbabilityMapping::depthHo()) )
 {
     mnId=nNextId++;
@@ -58,8 +59,9 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
 
     //  compute some value for  semi dense  process
      cv::Mat image_mean,image_stddev,gradx,grady;
-     cv::meanStdDev(im_,image_mean,image_stddev);
-     I_stddev = image_stddev.at<double>(0,0);
+//     cv::meanStdDev(im_,image_mean,image_stddev);
+//     I_stddev = image_stddev.at<double>(0,0);
+     I_stddev = sigmaI;
      image_mean.release();
      image_stddev.release();
 
@@ -732,7 +734,7 @@ DBoW2::FeatureVector KeyFrame::GetFeatureVector()
     return mFeatVec;
 }
 
-vector<float> KeyFrame::GetAllPointDepths(int q)
+vector<float> KeyFrame::GetAllPointDepths()
 {
     vector<MapPoint*> vpMapPoints;
     cv::Mat Tcw_;
@@ -755,7 +757,7 @@ vector<float> KeyFrame::GetAllPointDepths(int q)
             MapPoint* pMP = mvpMapPoints[i];
             cv::Mat x3Dw = pMP->GetWorldPos();
             float z = Rcw2.dot(x3Dw)+zcw;
-            vDepths.push_back(z);
+            vDepths.push_back(1/z);
         }
     }
 

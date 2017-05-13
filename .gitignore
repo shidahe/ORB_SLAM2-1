@@ -19,7 +19,6 @@ Thirdparty/g2o/config.h
 Thirdparty/g2o/lib/
 Vocabulary/ORBvoc.txt
 build/
-*~
 lib/
 
 # Prerequisites
@@ -57,11 +56,8 @@ lib/
 
 *~
 
-# ORBSLAM
-build/
-Vocabulary/ORBvoc.txt
-KeyFrameTrajectory.txt
 # CLion
 .idea/
+
 # VScode
 */.vscode/

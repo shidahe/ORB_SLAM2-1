@@ -36,6 +36,12 @@
 #include <pcl/io/ply_io.h>
 
 
+//#define OnlineLoop
+
+#define InterKeyFrameChecking
+#define InterKeyFrameSmoothing
+
+
 void saveMatToCsv(cv::Mat data, std::string filename)
 {
     std::ofstream outputFile(filename.c_str());
@@ -84,9 +90,21 @@ void ProbabilityMapping::Run()
         if(CheckFinish()) break;
         sleep(1);
         //TestSemiDenseViewer();
-//        SemiDenseLoop();
+#ifdef OnlineLoop
+        struct timespec start, finish;
+        double duration;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+
+        SemiDenseLoop();
+
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        duration = ( finish.tv_sec - start.tv_sec );
+        duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
+        std::cout<<"semi dense mapping took: "<< duration << "s" << std::endl;
+#endif
     }
 
+#ifndef OnlineLoop
     struct timespec start, finish;
     double duration;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -98,6 +116,7 @@ void ProbabilityMapping::Run()
     duration = ( finish.tv_sec - start.tv_sec );
     duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
     std::cout<<"semi dense mapping took: "<< duration << "s" << std::endl;
+#endif
 
     std::string strFileName("semi_pointcloud.obj");
     std::ofstream fileOut(strFileName.c_str(), std::ios::out);
@@ -191,22 +210,6 @@ void ProbabilityMapping::SemiDenseLoop(){
     cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
     if(vpKFs.size() < 10){return;}
 
-//    // prepare in plane rotation for all kf pairs
-//    std::map<ORB_SLAM2::KeyFrame*,std::map<ORB_SLAM2::KeyFrame*,float>> rotKFs;
-//    for(size_t i = 0; i < vpKFs.size(); i++){
-//        std::map<ORB_SLAM2::KeyFrame*,float> rotIs;
-//        for(size_t j = 0; j < vpKFs.size(); j++){
-//            std::vector<float> rot = GetRotInPlane(vpKFs[i], vpKFs[j]);
-//            std::sort(rot.begin(), rot.end());
-//            // 0 rotation for kf pair without covisibility
-//            float medianRot = 0;
-//            if (rot.size() > 0)
-//                medianRot = rot[(rot.size()-1)/2];
-//            rotIs.insert(std::map<ORB_SLAM2::KeyFrame*,float>::value_type(vpKFs[j],medianRot));
-//        }
-//        rotKFs.insert(std::map<ORB_SLAM2::KeyFrame*,std::map<ORB_SLAM2::KeyFrame*,float>>::value_type(vpKFs[i],rotIs));
-//    }
-
     for(size_t i =0;i < vpKFs.size(); i++ )
     {
 /*
@@ -224,19 +227,19 @@ void ProbabilityMapping::SemiDenseLoop(){
         if (kf->nNextId - kf->mnId < 10)
             continue;
 
-        std::vector<ORB_SLAM2::KeyFrame*> closestMatches = kf->GetBestCovisibilityKeyFrames(covisN);
-        if(closestMatches.size() < covisN) {continue;}
-
-//        // use covisN good neighbor kfs
-//        std::vector<ORB_SLAM2::KeyFrame*> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
-//        std::vector<ORB_SLAM2::KeyFrame*> closestMatches;
-//        for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
-//            if (closestMatches.size() >= covisN)
-//                break;
-//            if (!closestMatchesAll[idxCov]->isBad())
-//                closestMatches.push_back(closestMatchesAll[idxCov]);
-//        }
+//        std::vector<ORB_SLAM2::KeyFrame*> closestMatches = kf->GetBestCovisibilityKeyFrames(covisN);
 //        if(closestMatches.size() < covisN) {continue;}
+
+        // use covisN good neighbor kfs
+        std::vector<ORB_SLAM2::KeyFrame*> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
+        std::vector<ORB_SLAM2::KeyFrame*> closestMatches;
+        for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
+            if (closestMatches.size() >= covisN)
+                break;
+            if (!closestMatchesAll[idxCov]->isBad())
+                closestMatches.push_back(closestMatchesAll[idxCov]);
+        }
+        if(closestMatches.size() < covisN) {continue;}
 
         std::map<ORB_SLAM2::KeyFrame*,float> rotIs;
         for(size_t j = 0; j < closestMatches.size(); j++){
@@ -246,7 +249,7 @@ void ProbabilityMapping::SemiDenseLoop(){
             float medianRot = 0;
             if (rot.size() > 0)
                 medianRot = rot[(rot.size()-1)/2];
-            rotIs.insert(std::map<ORB_SLAM2::KeyFrame*,float>::value_type(vpKFs[j],medianRot));
+            rotIs.insert(std::map<ORB_SLAM2::KeyFrame*,float>::value_type(closestMatches[j],medianRot));
         }
 
         float max_depth;
@@ -312,7 +315,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         // cv::imwrite("depth_image.png",depth_image);
         // saveMatToCsv(depth_image,"depth.csv");
 
-        // std::cout<<"IntraKeyFrameDepthChecking"<<std::endl;
+        std::cout<<"IntraKeyFrameDepthChecking " << i <<std::endl;
         IntraKeyFrameDepthChecking( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
         IntraKeyFrameDepthGrowing( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
 
@@ -343,6 +346,10 @@ void ProbabilityMapping::SemiDenseLoop(){
 
         kf->semidense_flag_ = true;
 
+        // only compute depth for one kf in one iteration in online mode
+#ifdef OnlineLoop
+        break;
+#endif
         //cv::imwrite("image.png",image);
         //pcl::io::savePLYFileBinary ("kf.ply", *cloudPtr);
         //cv::imwrite("grad_image.png",image_debug);
@@ -355,11 +362,13 @@ void ProbabilityMapping::SemiDenseLoop(){
 
 //    cv::Mat sigmaAll;
 
+    int num_inter_checked = 0;
+    int num_all_neigbors = 0;
+
     for(size_t i =0;i < vpKFs.size(); i++ )
     {
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
         if (kf->isBad() || kf->interKF_depth_flag_)continue;
-
         // 10 keyframe delay
         if (kf->nNextId - kf->mnId < 10)
             continue;
@@ -367,25 +376,30 @@ void ProbabilityMapping::SemiDenseLoop(){
         if (!kf->semidense_flag_) continue;
 
         // option1: could just be the best covisibility keyframes
-        std::vector<ORB_SLAM2::KeyFrame*> neighbors = kf->GetBestCovisibilityKeyFrames(covisN);
-        if(neighbors.size() < covisN) {continue;}
+//        std::vector<ORB_SLAM2::KeyFrame*> neighbors = kf->GetBestCovisibilityKeyFrames(covisN);
+//        if(neighbors.size() < covisN) {continue;}
 
-//    std::vector<ORB_SLAM2::KeyFrame*> neighborsAll = currentKf->GetVectorCovisibleKeyFrames();
-//    for (size_t idxCov = 0; idxCov < neighborsAll.size(); idxCov++){
-//        if (neighbors.size() >= covisN)
-//            break;
-//        if (!neighborsAll[idxCov]->isBad())
-//            neighbors.push_back(neighborsAll[idxCov]);
-//    }
-//    if(neighbors.size() < covisN) {return;}
+        std::vector<ORB_SLAM2::KeyFrame*> neighbors;
+        std::vector<ORB_SLAM2::KeyFrame*> neighborsAll = kf->GetVectorCovisibleKeyFrames();
+        for (size_t idxCov = 0; idxCov < neighborsAll.size(); idxCov++){
+            if (neighbors.size() >= covisN)
+                break;
+            if (!neighborsAll[idxCov]->isBad())
+                neighbors.push_back(neighborsAll[idxCov]);
+        }
+        if(neighbors.size() < covisN) {return;}
 
         // neighbors have depth reconstructed
         int num_depth_kf = 0;
         for (size_t j = 0; j < neighbors.size(); j++){
             if (neighbors[j]->semidense_flag_) {num_depth_kf++;}
         }
-        if (num_depth_kf < covisN) continue;
 
+        num_inter_checked++;
+        if (num_depth_kf < covisN) continue;
+        num_all_neigbors++;
+
+        std::cout << "InterKeyFrameDepthChecking " << i << std::endl;
         InterKeyFrameDepthChecking(kf,neighbors);
 
 #pragma omp parallel for schedule(dynamic) collapse(2)
@@ -399,6 +413,7 @@ void ProbabilityMapping::SemiDenseLoop(){
 //                cv::Mat row( 1,1,CV_32F, cv::Scalar(kf->depth_sigma_.at<float>(y,x)) );
 //                sigmaAll.push_back( row );
 
+                // sigma threshold: mean around 0.02, max 1.0+
 //                if(kf->depth_sigma_.at<float>(y,x) > 0.1) continue;
 
                 float inv_d = kf->depth_map_.at<float>(y,x);
@@ -417,7 +432,15 @@ void ProbabilityMapping::SemiDenseLoop(){
         }
 
         kf->interKF_depth_flag_ = true;
+
+        // only compute depth for one kf in one iteration in online mode
+#ifdef OnlineLoop
+        break;
+#endif
     }
+
+    std::cout << "all neighbors reconstructed KF: " << num_all_neigbors << "/" << num_inter_checked << std::endl;
+
 //    cv::Mat sigma_mean,sigma_stddev;
 //    cv::meanStdDev(sigmaAll,sigma_mean,sigma_stddev);
 //
@@ -1021,16 +1044,18 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
                 float xj = Xj.at<float>(0);
                 float yj = Xj.at<float>(1);
 
-
                 // look in 4-neighborhood pixel p_j,n around xj for compatible inverse depth
-
-                if (xj<0 || xj>=cols-1 || yj<0 || yj>=rows-1) continue;
+                std::vector<depthHo> compatible_pixels_J;
+                if (xj<0 || xj>=cols-1 || yj<0 || yj>=rows-1) {
+                    // make sure kf j correspondence
+                    compatible_pixels_by_frame.push_back(compatible_pixels_J);
+                    continue;
+                }
                 int x0 = (int)std::floor(xj);
                 int y0 = (int )std::floor(yj);
                 int x1 = x0 + 1;
                 int y1 =  y0 + 1;
 
-                std::vector<depthHo> compatible_pixels_J;
                 float d = pKFj->depth_map_.at<float>(y0,x0);
                 float sigma = pKFj->depth_sigma_.at<float>(y0,x0);
                 if(d>0.000001)
@@ -1079,8 +1104,6 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
                         compatible_pixels_J.push_back(dHo);
                     }
                 }
-                //compatible_pixels_by_frame[j] = compatible_pixels; // is this a memory leak?
-                // n_compatible_pixels += compatible_pixels.size();
 
                 // at least one compatible pixel p_j,n must be found in at least lambdaN neighbor keyframes
                 if (compatible_pixels_J.size() >= 1) {compatible_neighbor_keyframes_count++;}

@@ -43,19 +43,13 @@
 #define th_low 50
 #define THETA 0.23
 #define NNRATIO 0.6
-
 #define NULL_DEPTH 999
-
-
-#define InterKeyFrameChecking
-//#define InterKeyFrameSmoothing
 
 
 namespace ORB_SLAM2 {
 class KeyFrame;
 class Map;
-} 
-
+}
 
 namespace cv {
 class Mat;

@@ -44,6 +44,11 @@ void LocalMapping::SetTracker(Tracking *pTracker)
     mpTracker=pTracker;
 }
 
+void LocalMapping::SetSemiDense(ProbabilityMapping* pSemiDense)
+{
+    mpSemiDense=pSemiDense;
+}
+
 void LocalMapping::Run()
 {
 
@@ -85,6 +90,8 @@ void LocalMapping::Run()
             }
 
             mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
+
+            mpSemiDense->InsertKeyFrame(mpCurrentKeyFrame);
         }
         else if(Stop())
         {

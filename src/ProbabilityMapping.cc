@@ -93,6 +93,7 @@ void ProbabilityMapping::Run()
         clock_gettime(CLOCK_MONOTONIC, &start);
 
         SemiDenseLoop();
+        InterKeyFrameLoop();
 
         //make point position dependent to kf position
         UpdateAllSemiDensePointSet();
@@ -110,6 +111,7 @@ void ProbabilityMapping::Run()
     clock_gettime(CLOCK_MONOTONIC, &start);
 
     SemiDenseLoop();
+    InterKeyFrameLoop();
 
     clock_gettime(CLOCK_MONOTONIC, &finish);
 
@@ -124,7 +126,7 @@ void ProbabilityMapping::Run()
         std::cerr << "Failed to save points on line" << std::endl;
         return;
     }
-    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    vector<ORB_SLAM2::KeyFrame*> vpKFs = GetAllKeyFrames();
 
     for (size_t indKF = 0; indKF < vpKFs.size(); indKF++) {
         ORB_SLAM2::KeyFrame* kf = vpKFs[indKF];
@@ -200,18 +202,27 @@ void ProbabilityMapping::TestSemiDenseViewer()
 
 }
 
-void ProbabilityMapping::SemiDenseLoop(){
+void ProbabilityMapping::SemiDenseLoop() {
 
     unique_lock<mutex> lock(mMutexSemiDense);
 
-    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
-    cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
-    if(vpKFs.size() < 10){return;}
+//    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+//    cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
+//    if(vpKFs.size() < 10){return;}
 
-    for(size_t i =0;i < vpKFs.size(); i++ )
-    {
-        ORB_SLAM2::KeyFrame* kf = vpKFs[i];
-        if(kf->isBad() || kf->semidense_flag_)
+    while (CheckNewKeyFrame()) {
+        ORB_SLAM2::KeyFrame *kf = NULL;
+        {
+            unique_lock<mutex> lock2(mMutexKFQueue);
+            kf = mlKFs.front();
+            mlKFs.pop_front();
+        }
+        if (kf == NULL) continue;
+//    }
+//    for(size_t i =0;i < vpKFs.size(); i++ )
+//    {
+//        ORB_SLAM2::KeyFrame* kf = vpKFs[i];
+        if (kf->isBad() || kf->semidense_flag_)
             continue;
         // 10 keyframe delay
         if (kf->nNextId - kf->mnId < 10)
@@ -221,25 +232,29 @@ void ProbabilityMapping::SemiDenseLoop(){
 //        if(closestMatches.size() < covisN) {continue;}
 
         // use covisN good neighbor kfs
-        std::vector<ORB_SLAM2::KeyFrame*> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
-        std::vector<ORB_SLAM2::KeyFrame*> closestMatches;
-        for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
+        std::vector<ORB_SLAM2::KeyFrame *> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
+        std::vector<ORB_SLAM2::KeyFrame *> closestMatches;
+        for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++) {
             if (closestMatches.size() >= covisN)
                 break;
             if (!closestMatchesAll[idxCov]->isBad())
                 closestMatches.push_back(closestMatchesAll[idxCov]);
         }
-        if(closestMatches.size() < covisN) {continue;}
+        if (closestMatches.size() < covisN) { continue; }
 
-        std::map<ORB_SLAM2::KeyFrame*,float> rotIs;
-        for(size_t j = 0; j < closestMatches.size(); j++){
+        // store kf for later use
+        KeepKeyFrame(kf);
+
+        // compute in plane rotation for kf pairs
+        std::map<ORB_SLAM2::KeyFrame *, float> rotIs;
+        for (size_t j = 0; j < closestMatches.size(); j++) {
             std::vector<float> rot = GetRotInPlane(kf, closestMatches[j]);
             std::sort(rot.begin(), rot.end());
             // 0 rotation for kf pair without covisibility
             float medianRot = 0;
             if (rot.size() > 0)
-                medianRot = rot[(rot.size()-1)/2];
-            rotIs.insert(std::map<ORB_SLAM2::KeyFrame*,float>::value_type(closestMatches[j],medianRot));
+                medianRot = rot[(rot.size() - 1) / 2];
+            rotIs.insert(std::map<ORB_SLAM2::KeyFrame *, float>::value_type(closestMatches[j], medianRot));
         }
 
         float max_depth;
@@ -250,38 +265,34 @@ void ProbabilityMapping::SemiDenseLoop(){
         cv::Mat image = kf->GetImage();
         cv::Mat image_debug = image.clone();
 
-        std::vector <cv::Mat> F;
+        std::vector<cv::Mat> F;
         F.clear();
-        for(size_t j=0; j<closestMatches.size(); j++)
-        {
-            ORB_SLAM2::KeyFrame* kf2 = closestMatches[ j ];
-            cv::Mat F12 = ComputeFundamental(kf,kf2);
+        for (size_t j = 0; j < closestMatches.size(); j++) {
+            ORB_SLAM2::KeyFrame *kf2 = closestMatches[j];
+            cv::Mat F12 = ComputeFundamental(kf, kf2);
             F.push_back(F12);
         }
 
 #pragma omp parallel for schedule(dynamic) collapse(2)
-        for(int y = 0+2; y < image.rows-2; y++)
-        {
-            for(int x = 0+2; x< image.cols-2; x++)
-            {
+        for (int y = 0 + 2; y < image.rows - 2; y++) {
+            for (int x = 0 + 2; x < image.cols - 2; x++) {
 
-                if(kf->GradImg.at<float>(y,x) < lambdaG){continue;}
-                float pixel =(float) image.at<uchar>(y,x); //maybe it should be cv::Mat
+                if (kf->GradImg.at<float>(y, x) < lambdaG) { continue; }
+                float pixel = (float) image.at<uchar>(y, x); //maybe it should be cv::Mat
 
                 std::vector<depthHo> depth_ho;
                 depth_ho.clear();
-                for(size_t j=0; j<closestMatches.size(); j++)
-                {
-                    ORB_SLAM2::KeyFrame* kf2 = closestMatches[ j ];
+                for (size_t j = 0; j < closestMatches.size(); j++) {
+                    ORB_SLAM2::KeyFrame *kf2 = closestMatches[j];
                     cv::Mat F12 = F[j];
 
                     float rot = rotIs[kf2];
-                    float best_u(0.0),best_v(0.0);
+                    float best_u(0.0), best_v(0.0);
                     depthHo dh;
-                    EpipolarSearch(kf, kf2, x, y, pixel, min_depth, max_depth, &dh,F12,best_u,best_v,kf->GradTheta.at<float>(y,x),rot);
+                    EpipolarSearch(kf, kf2, x, y, pixel, min_depth, max_depth, &dh, F12, best_u, best_v,
+                                   kf->GradTheta.at<float>(y, x), rot);
 
-                    if (dh.supported && 1/dh.depth > 0.0)
-                    {
+                    if (dh.supported && 1 / dh.depth > 0.0) {
                         depth_ho.push_back(dh);
                     }
                 }
@@ -289,10 +300,9 @@ void ProbabilityMapping::SemiDenseLoop(){
                 if (depth_ho.size() > lambdaN) {
                     depthHo dh_temp;
                     InverseDepthHypothesisFusion(depth_ho, dh_temp);
-                    if(dh_temp.supported)
-                    {
-                        kf->depth_map_.at<float>(y,x) = dh_temp.depth;   //  used to do IntraKeyFrameDepthChecking
-                        kf->depth_sigma_.at<float>(y,x) = dh_temp.sigma;
+                    if (dh_temp.supported) {
+                        kf->depth_map_.at<float>(y, x) = dh_temp.depth;   //  used to do IntraKeyFrameDepthChecking
+                        kf->depth_sigma_.at<float>(y, x) = dh_temp.sigma;
                     }
                 }
 
@@ -302,9 +312,9 @@ void ProbabilityMapping::SemiDenseLoop(){
         // cv::imwrite("depth_image.png",depth_image);
         // saveMatToCsv(depth_image,"depth.csv");
 
-        std::cout<<"IntraKeyFrameDepthChecking " << i <<std::endl;
-        IntraKeyFrameDepthChecking( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
-        IntraKeyFrameDepthGrowing( kf->depth_map_,  kf->depth_sigma_, kf->GradImg);
+        std::cout << "IntraKeyFrameDepthChecking " << kf->mnId << std::endl;
+        IntraKeyFrameDepthChecking(kf->depth_map_, kf->depth_sigma_, kf->GradImg);
+        IntraKeyFrameDepthGrowing(kf->depth_map_, kf->depth_sigma_, kf->GradImg);
 
         UpdateSemiDensePointSet(kf);
 
@@ -319,13 +329,20 @@ void ProbabilityMapping::SemiDenseLoop(){
         //cv::imwrite("grad_image.png",image_debug);
 
     }
+}
+
+void ProbabilityMapping::InterKeyFrameLoop() {
+
+    unique_lock<mutex> lock(mMutexSemiDense);
 
     int num_inter_checked = 0;
     int num_all_neigbors = 0;
 
-    for(size_t i =0;i < vpKFs.size(); i++ )
+    std::vector<ORB_SLAM2::KeyFrame*> vAllKFs = GetAllKeyFrames();
+
+    for(size_t i =0;i < vAllKFs.size(); i++ )
     {
-        ORB_SLAM2::KeyFrame* kf = vpKFs[i];
+        ORB_SLAM2::KeyFrame* kf = vAllKFs[i];
         if (kf->isBad() || kf->interKF_depth_flag_)continue;
         // 10 keyframe delay
         if (kf->nNextId - kf->mnId < 10)
@@ -345,7 +362,7 @@ void ProbabilityMapping::SemiDenseLoop(){
             if (!neighborsAll[idxCov]->isBad())
                 neighbors.push_back(neighborsAll[idxCov]);
         }
-        if(neighbors.size() < covisN) {return;}
+        if(neighbors.size() < covisN) {continue;}
 
         // neighbors have depth reconstructed
         int num_depth_kf = 0;
@@ -357,7 +374,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         if (num_depth_kf < covisN) continue;
         num_all_neigbors++;
 
-        std::cout << "InterKeyFrameDepthChecking " << i << std::endl;
+        std::cout << "InterKeyFrameDepthChecking " << kf->mnId << std::endl;
         InterKeyFrameDepthChecking(kf,neighbors);
 
         UpdateSemiDensePointSet(kf);
@@ -374,9 +391,33 @@ void ProbabilityMapping::SemiDenseLoop(){
 
 }
 
+bool ProbabilityMapping::CheckNewKeyFrame() {
+    unique_lock<mutex> lock(mMutexKFQueue);
+    // 10 keyframe delay
+    return (mlKFs.size() > 10);
+}
+
+std::vector<ORB_SLAM2::KeyFrame*> ProbabilityMapping::GetAllKeyFrames()
+{
+    unique_lock<mutex> lock(mMutexAllKF);
+    return std::vector<ORB_SLAM2::KeyFrame*>(mvAllKFs.begin(),mvAllKFs.end());
+}
+
+void ProbabilityMapping::KeepKeyFrame(ORB_SLAM2::KeyFrame *kf) {
+    unique_lock<mutex> lock(mMutexAllKF);
+    mvAllKFs.push_back(kf);
+}
+
+void ProbabilityMapping::InsertKeyFrame(ORB_SLAM2::KeyFrame *pKF)
+{
+    unique_lock<mutex> lock(mMutexKFQueue);
+    if(pKF->mnId!=0)
+        mlKFs.push_back(pKF);
+}
+
 void ProbabilityMapping::UpdateAllSemiDensePointSet(){
     unique_lock<mutex> lock(mMutexSemiDense);
-    vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    vector<ORB_SLAM2::KeyFrame*> vpKFs = GetAllKeyFrames();
     for (size_t i = 0; i < vpKFs.size(); i++){
         if (vpKFs[i]->poseChanged) {
             UpdateSemiDensePointSet(vpKFs[i]);

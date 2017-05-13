@@ -46,6 +46,8 @@ public:
 
     void SetTracker(Tracking* pTracker);
 
+    void SetSemiDense(ProbabilityMapping* pSemiDense);
+
     // Main function
     void Run();
 
@@ -103,6 +105,8 @@ protected:
 
     LoopClosing* mpLoopCloser;
     Tracking* mpTracker;
+
+    ProbabilityMapping* mpSemiDense;
 
     std::list<KeyFrame*> mlNewKeyFrames;
 

@@ -27,6 +27,7 @@
 #include <cstdlib>
 #include <stdio.h>
 #include <vector>
+#include <list>
 #include <numeric>
 //#include <opencv2/opencv.hpp>
 #include <Eigen/Core>
@@ -74,6 +75,8 @@ public:
 
         /* * \brief void SemiDenseLoop(ORB_SLAM2::KeyFrame kf, depthHo**, std::vector<depthHo>*): return results of epipolar search (depth hypotheses) */
         void SemiDenseLoop();
+        void InterKeyFrameLoop();
+
         /* * \brief void stereo_search_constraints(): return min, max inverse depth */
         void StereoSearchConstraints(ORB_SLAM2::KeyFrame* kf, float* min_depth, float* max_depth);
 	/* * \brief void epipolar_search(): return distribution of inverse depths/sigmas for each pixel */
@@ -106,7 +109,14 @@ public:
             //unique_lock<mutex> lock(mMutexFinish);
             return mbFinishRequested;
         }
+
         bool mbFinished;
+
+        void InsertKeyFrame(ORB_SLAM2::KeyFrame* kf);
+        bool CheckNewKeyFrame();
+        std::vector<ORB_SLAM2::KeyFrame*> GetAllKeyFrames();
+        void KeepKeyFrame(ORB_SLAM2::KeyFrame* kf);
+
 
 private:
         bool mbFinishRequested;
@@ -133,6 +143,10 @@ private:
 
         std::vector<float> GetRotInPlane(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::KeyFrame* kf2);
 
+        std::mutex mMutexKFQueue;
+        std::list<ORB_SLAM2::KeyFrame*> mlKFs;
+        std::mutex mMutexAllKF;
+        std::vector<ORB_SLAM2::KeyFrame*> mvAllKFs;
 protected:
         std::mutex mMutexSemiDense;
 };

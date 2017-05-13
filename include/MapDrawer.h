@@ -38,6 +38,9 @@ public:
 
     Map* mpMap;
 
+    ProbabilityMapping* mpSemiDense;
+    void SetSemiDense(ProbabilityMapping* pSemiDense);
+
     void DrawMapPoints();
     void DrawSemiDense();
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);

@@ -78,9 +78,15 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Create the Map
     mpMap = new Map();
 
+    //Initialize
+    mpSemiDenseMapping = new ProbabilityMapping(mpMap);
+    mptSemiDense = new thread(&ProbabilityMapping::Run, mpSemiDenseMapping);
+
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = new FrameDrawer(mpMap);
     mpMapDrawer = new MapDrawer(mpMap, strSettingsFile);
+
+    mpMapDrawer->SetSemiDense(mpSemiDenseMapping);
 
     //Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
@@ -95,10 +101,6 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
-    //Initialize
-    mpSemiDenseMapping = new ProbabilityMapping(mpMap);
-    mptSemiDense = new thread(&ProbabilityMapping::Run, mpSemiDenseMapping);
-
     //Initialize the Viewer thread and launch
     mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile);
     if(bUseViewer)
@@ -112,6 +114,8 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     mpLocalMapper->SetTracker(mpTracker);
     mpLocalMapper->SetLoopCloser(mpLoopCloser);
+
+    mpLocalMapper->SetSemiDense(mpSemiDenseMapping);
 
     mpLoopCloser->SetTracker(mpTracker);
     mpLoopCloser->SetLocalMapper(mpLocalMapper);

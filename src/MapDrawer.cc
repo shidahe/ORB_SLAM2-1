@@ -42,6 +42,11 @@ MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath):mpMap(pMap)
 
 }
 
+void MapDrawer::SetSemiDense(ProbabilityMapping* pSemiDense)
+{
+    mpSemiDense=pSemiDense;
+}
+
 void MapDrawer::DrawMapPoints()
 {
     const vector<MapPoint*> &vpMPs = mpMap->GetAllMapPoints();
@@ -84,7 +89,9 @@ void MapDrawer::DrawMapPoints()
 void MapDrawer::DrawSemiDense()
 {
 
-    const vector<KeyFrame*> &vpKf = mpMap->GetAllKeyFrames();
+//    const vector<KeyFrame*> &vpKf = mpMap->GetAllKeyFrames();
+
+    const vector<KeyFrame*> &vpKf = mpSemiDense->GetAllKeyFrames();
     if(vpKf.empty())return;
 
     glPointSize(mPointSize);

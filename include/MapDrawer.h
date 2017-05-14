@@ -48,6 +48,8 @@ public:
 
 private:
 
+    bool mbRGB;
+
     float mKeyFrameSize;
     float mKeyFrameLineWidth;
     float mGraphLineWidth;

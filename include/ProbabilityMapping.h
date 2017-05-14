@@ -90,6 +90,7 @@ public:
 
         void UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf);
         void UpdateAllSemiDensePointSet();
+        void ApplySigmaThreshold(ORB_SLAM2::KeyFrame* kf);
 
         /* * \brief void interKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* currentKF, std::vector<std::vector<depthHo> > h, int imrows, int imcols):
              * *         inter-keyframe depth-checking, smoothing, and growing. */
@@ -107,6 +108,8 @@ public:
             return mbFinishRequested;
         }
         bool mbFinished;
+
+        std::mutex mMutexSemiDense;
 
 private:
         bool mbFinishRequested;
@@ -133,8 +136,7 @@ private:
 
         std::vector<float> GetRotInPlane(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::KeyFrame* kf2);
 
-protected:
-        std::mutex mMutexSemiDense;
+
 };
 
 #endif

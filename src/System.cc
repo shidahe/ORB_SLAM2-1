@@ -249,6 +249,11 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     }
     }
 
+    // wait for semi dense thread
+    {
+        unique_lock<mutex> lock(mpSemiDenseMapping->mMutexSemiDense);
+    }
+
     return mpTracker->GrabImageMonocular(im,timestamp);
 }
 

@@ -145,6 +145,11 @@ public:
     //std::vector< Eigen::Vector3f > SemiDensePointSets_;
     cv::Mat SemiDensePointSets_;
     bool poseChanged;
+    static long unsigned int nNextMappingId;
+    long unsigned int mnMappingId;
+    std::mutex mMutexMappingId;
+    bool MappingIdDelay();
+    void IncreaseMappingId();
 /******************************************/
     //
     static long unsigned int nNextId;

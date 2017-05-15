@@ -103,25 +103,26 @@ void MapDrawer::DrawSemiDense()
         for(size_t y = 0; y< kf->im_.rows; y++)
           for(size_t x = 0; x< kf->im_.cols; x++)
         {
-          Eigen::Vector3f Pw  (kf->SemiDensePointSets_.at<float>(y,3*x), kf->SemiDensePointSets_.at<float>(y,3*x+1), kf->SemiDensePointSets_.at<float>(y,3*x+2));
+            if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
+            if( kf->depth_map_.at<float>(y,x) > 0.000001 )
+            {
+                Eigen::Vector3f Pw  (kf->SemiDensePointSets_.at<float>(y,3*x), kf->SemiDensePointSets_.at<float>(y,3*x+1), kf->SemiDensePointSets_.at<float>(y,3*x+2));
 
-          if( kf->depth_map_.at<float>(y,x) > 0.000001 )
-          {
-            if(kf->rgb_.channels() == 3) {
-                float b = kf->rgb_.at<uchar>(y, 3*x) / 255.0;
-                float g = kf->rgb_.at<uchar>(y, 3*x+1) / 255.0;
-                float r = kf->rgb_.at<uchar>(y, 3*x+2) / 255.0;
-                if (mbRGB) {
-                    glColor3f(r, g, b);
+                if(kf->rgb_.channels() == 3) {
+                    float b = kf->rgb_.at<uchar>(y, 3*x) / 255.0;
+                    float g = kf->rgb_.at<uchar>(y, 3*x+1) / 255.0;
+                    float r = kf->rgb_.at<uchar>(y, 3*x+2) / 255.0;
+                    if (mbRGB) {
+                        glColor3f(r, g, b);
+                    } else {
+                        glColor3f(b, g, r);
+                    }
                 } else {
-                    glColor3f(b, g, r);
+                    float gray = kf->rgb_.at<uchar>(y, x) / 255.0;
+                    glColor3f(gray,gray,gray);
                 }
-            } else {
-                float gray = kf->rgb_.at<uchar>(y, x) / 255.0;
-                glColor3f(gray,gray,gray);
+                glVertex3f( Pw[0],Pw[1],Pw[2]);
             }
-            glVertex3f( Pw[0],Pw[1],Pw[2]);
-          }
         }
     }
     //if( draw_cnt>0) std::cout<<"Have Drawn : "<<draw_cnt<<"KeyFrame's semidense map "<<std::endl;

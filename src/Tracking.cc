@@ -1547,6 +1547,7 @@ void Tracking::Reset()
     mpMap->clear();
 
     KeyFrame::nNextId = 0;
+    KeyFrame::nNextMappingId = 0;
     Frame::nNextId = 0;
     mState = NO_IMAGES_YET;
 

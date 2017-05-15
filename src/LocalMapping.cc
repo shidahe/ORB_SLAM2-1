@@ -84,6 +84,8 @@ void LocalMapping::Run()
                 KeyFrameCulling();
             }
 
+            mpCurrentKeyFrame->IncreaseMappingId();
+
             mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
         }
         else if(Stop())

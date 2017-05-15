@@ -36,7 +36,7 @@
 #include <pcl/io/ply_io.h>
 
 
-//#define OnlineLoop
+#define OnlineLoop
 
 
 void saveMatToCsv(cv::Mat data, std::string filename)
@@ -87,21 +87,21 @@ void ProbabilityMapping::Run()
         if(CheckFinish()) break;
         //TestSemiDenseViewer();
 #ifdef OnlineLoop
-        struct timespec start, finish;
-        double duration;
-        clock_gettime(CLOCK_MONOTONIC, &start);
+//        struct timespec start, finish;
+//        double duration;
+//        clock_gettime(CLOCK_MONOTONIC, &start);
 
         SemiDenseLoop();
 
         //make point position dependent to kf position
         UpdateAllSemiDensePointSet();
 
-        clock_gettime(CLOCK_MONOTONIC, &finish);
-        duration = ( finish.tv_sec - start.tv_sec );
-        duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
-        std::cout<<"semi dense mapping took: "<< duration << "s" << std::endl;
+//        clock_gettime(CLOCK_MONOTONIC, &finish);
+//        duration = ( finish.tv_sec - start.tv_sec );
+//        duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
+//        std::cout<<"semi dense mapping took: "<< duration << "s" << std::endl;
 #endif
-        usleep(3000);
+        usleep(5000);
     }
 
 #ifndef OnlineLoop
@@ -137,6 +137,7 @@ void ProbabilityMapping::Run()
                 Eigen::Vector3f Pw(kf->SemiDensePointSets_.at<float>(y, 3 * x),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
+                if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
                 if (kf->depth_map_.at<float>(y,x) > 0.000001) {
                     fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2])
                             << std::endl;
@@ -204,7 +205,6 @@ void ProbabilityMapping::SemiDenseLoop(){
     unique_lock<mutex> lock(mMutexSemiDense);
 
     vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
-    cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
     if(vpKFs.size() < 10){return;}
 
     for(size_t i =0;i < vpKFs.size(); i++ )
@@ -213,7 +213,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         if(kf->isBad() || kf->semidense_flag_)
             continue;
         // 10 keyframe delay
-        if (kf->nNextId - kf->mnId < 10)
+        if (!kf->MappingIdDelay())
             continue;
 
 //        std::vector<ORB_SLAM2::KeyFrame*> closestMatches = kf->GetBestCovisibilityKeyFrames(covisN);
@@ -229,6 +229,12 @@ void ProbabilityMapping::SemiDenseLoop(){
                 closestMatches.push_back(closestMatchesAll[idxCov]);
         }
         if(closestMatches.size() < covisN) {continue;}
+
+        // start timing
+        struct timespec start, finish;
+        double duration;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        cout<<"semidense_Info:    vpKFs.size()--> "<< vpKFs.size() << std::endl;
 
         std::map<ORB_SLAM2::KeyFrame*,float> rotIs;
         for(size_t j = 0; j < closestMatches.size(); j++){
@@ -307,9 +313,15 @@ void ProbabilityMapping::SemiDenseLoop(){
 
 //        UpdateSemiDensePointSet(kf);
 
-        ApplySigmaThreshold(kf);
+//        ApplySigmaThreshold(kf);
 
         kf->semidense_flag_ = true;
+
+        // timing
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        duration = ( finish.tv_sec - start.tv_sec );
+        duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
+        std::cout<<"depth reconstruction took: "<< duration << "s" << std::endl;
 
         // only compute depth for one kf in one iteration in online mode
 #ifdef OnlineLoop
@@ -348,6 +360,13 @@ void ProbabilityMapping::SemiDenseLoop(){
         }
         if(neighbors.size() < covisN) {continue;}
 
+
+        // start timing
+        struct timespec start, finish;
+        double duration;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+
+
         // neighbors have depth reconstructed
         int num_depth_kf = 0;
         for (size_t j = 0; j < neighbors.size(); j++){
@@ -365,13 +384,20 @@ void ProbabilityMapping::SemiDenseLoop(){
 
         kf->interKF_depth_flag_ = true;
 
+
+        //timing
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        duration = ( finish.tv_sec - start.tv_sec );
+        duration += ( finish.tv_nsec - start.tv_nsec ) / 1000000000.0;
+        std::cout<<"depth checking took: "<< duration << "s" << std::endl;
+
 //        // only compute depth for one kf in one iteration in online mode
 //#ifdef OnlineLoop
 //        break;
 //#endif
     }
 
-    std::cout << "all neighbors reconstructed KF: " << num_all_neigbors << "/" << num_inter_checked << std::endl;
+//    std::cout << "all neighbors reconstructed KF: " << num_all_neigbors << "/" << num_inter_checked << std::endl;
 
 }
 
@@ -399,6 +425,8 @@ void ProbabilityMapping::ApplySigmaThreshold(ORB_SLAM2::KeyFrame* kf){
 void ProbabilityMapping::UpdateAllSemiDensePointSet(){
     unique_lock<mutex> lock(mMutexSemiDense);
     vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    if(vpKFs.size() < 10){return;}
+
     for (size_t i = 0; i < vpKFs.size(); i++){
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
         if(kf->isBad() || kf->semidense_flag_)
@@ -507,18 +535,28 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
 
         // condition 2:
         float th_epipolar_line = cv::fastAtan2(-a/b,1);
-        float temp_gradth =  kf2->GradTheta.at<float>(vj,uj) ;
+        float temp_gradth =  kf2->GradTheta.at<float>(vj,uj);
 //        if( temp_gradth > 270) temp_gradth =  temp_gradth - 360;
 //        if( temp_gradth > 90 &&  temp_gradth<=270)
 //            temp_gradth =  temp_gradth - 180;
 //        if(th_epipolar_line>270) th_epipolar_line = th_epipolar_line - 360;
-        float ang_diff = abs(temp_gradth - th_epipolar_line);
-        if(ang_diff >= 180) ang_diff -= 180;
-        if(abs(ang_diff - 90)< 90-lambdaL){  continue;}
+        float ang_diff = temp_gradth - th_epipolar_line;
+        while(ang_diff >= 360) { ang_diff -= 360; }
+        while(ang_diff < 0) { ang_diff += 360; }
+        if(ang_diff > 180) ang_diff = 360 - ang_diff;
+        if(ang_diff > 90) ang_diff = 180 - ang_diff;
+        if(ang_diff > lambdaL) { continue; }
 
         // condition 3:
         //if(abs(th_grad - ( th_pi + th_rot )) > lambdaTheta)continue;
-        if(abs( kf2->GradTheta.at<float>(vj,uj) -  th_pi - rot) > lambdaTheta)continue;
+        float ang_pi_rot = th_pi + rot;
+        while(ang_pi_rot >= 360) { ang_pi_rot -= 360; }
+        while(ang_pi_rot < 0) { ang_pi_rot += 360; }
+        float th_diff = kf2->GradTheta.at<float>(vj,uj) - ang_pi_rot;
+        while(th_diff >= 360) { th_diff -= 360; }
+        while(th_diff < 0) { th_diff += 360; }
+        if(th_diff > 180) th_diff = 360 - th_diff;
+        if(th_diff > lambdaTheta) continue;
 
 //        float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
 //        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
@@ -548,8 +586,8 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         uj_minus = best_pixel - 1;
         vj_minus = (int)std::round(-((a/b)*uj_minus + (c/b)));
 
-        g = ((float)kf2->im_.at<uchar>(vj_plus, uj_plus) -(float) kf2->im_.at<uchar>(vj_minus, uj_minus))/2.0;
-        q = ( kf2->GradImg.at<float>(vj_plus, uj_plus) -  kf2->GradImg.at<float>(vj_minus, uj_minus))/2.0;
+        g = ((float)kf2->im_.at<uchar>(vj_plus, uj_plus) - (float) kf2->im_.at<uchar>(vj_minus, uj_minus)) / 2;
+        q = ( kf2->GradImg.at<float>(vj_plus, uj_plus) -  kf2->GradImg.at<float>(vj_minus, uj_minus)) / 2;
 /*
      if(vj_plus< 0)   //  if abs(a/b) is large,   a little step for uj, may produce a large change on vj. so there is a bug !!!  vj_plus may <0
      {

@@ -27,8 +27,9 @@ namespace ORB_SLAM2
 {
 
 long unsigned int KeyFrame::nNextId=0;
+long unsigned int KeyFrame::nNextMappingId=0;
 
-KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
+    KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     mnFrameId(F.mnId),  mTimeStamp(F.mTimeStamp), mnGridCols(FRAME_GRID_COLS), mnGridRows(FRAME_GRID_ROWS),
     mfGridElementWidthInv(F.mfGridElementWidthInv), mfGridElementHeightInv(F.mfGridElementHeightInv),
     mnTrackReferenceForFrame(0), mnFuseTargetForKF(0), mnBALocalForKF(0), mnBAFixedForKF(0),
@@ -46,6 +47,8 @@ KeyFrame::KeyFrame(Frame &F, Map *pMap, KeyFrameDatabase *pKFDB):
     SemiDenseMatrix(im_.rows, std::vector<ProbabilityMapping:: depthHo>(im_.cols, ProbabilityMapping::depthHo()) )
 {
     mnId=nNextId++;
+
+    mnMappingId = 0;
 
     mGrid.resize(mnGridCols);
     for(int i=0; i<mnGridCols;i++)
@@ -768,5 +771,16 @@ vector<float> KeyFrame::GetAllPointDepths()
     //README
     return vDepths;//[(vDepths.size()-1)/q];
 }
+
+    bool KeyFrame::MappingIdDelay(){
+        unique_lock<mutex> lock(mMutexMappingId);
+        if(mnMappingId == 0) return false;
+        return (nNextMappingId - mnMappingId) > 10;
+    }
+
+    void KeyFrame::IncreaseMappingId(){
+        unique_lock<mutex> lock(mMutexMappingId);
+        mnMappingId = nNextMappingId++;
+    }
 
 } //namespace ORB_SLAM

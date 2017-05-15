@@ -103,7 +103,7 @@ void MapDrawer::DrawSemiDense()
         for(size_t y = 0; y< kf->im_.rows; y++)
           for(size_t x = 0; x< kf->im_.cols; x++)
         {
-            if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
+            if (kf->depth_sigma_.at<float>(y,x) > 0.02) continue;
             if( kf->depth_map_.at<float>(y,x) > 0.000001 )
             {
                 Eigen::Vector3f Pw  (kf->SemiDensePointSets_.at<float>(y,3*x), kf->SemiDensePointSets_.at<float>(y,3*x+1), kf->SemiDensePointSets_.at<float>(y,3*x+2));

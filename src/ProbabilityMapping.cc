@@ -137,7 +137,7 @@ void ProbabilityMapping::Run()
                 Eigen::Vector3f Pw(kf->SemiDensePointSets_.at<float>(y, 3 * x),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
-                if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
+                if (kf->depth_sigma_.at<float>(y,x) > 0.02) continue;
                 if (kf->depth_map_.at<float>(y,x) > 0.000001) {
                     fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2])
                             << std::endl;
@@ -541,8 +541,8 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
 //            temp_gradth =  temp_gradth - 180;
 //        if(th_epipolar_line>270) th_epipolar_line = th_epipolar_line - 360;
         float ang_diff = temp_gradth - th_epipolar_line;
-        while(ang_diff >= 360) { ang_diff -= 360; }
-        while(ang_diff < 0) { ang_diff += 360; }
+        if(ang_diff >= 360) { ang_diff -= 360; }
+        if(ang_diff < 0) { ang_diff += 360; }
         if(ang_diff > 180) ang_diff = 360 - ang_diff;
         if(ang_diff > 90) ang_diff = 180 - ang_diff;
         if(ang_diff > lambdaL) { continue; }
@@ -550,11 +550,11 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         // condition 3:
         //if(abs(th_grad - ( th_pi + th_rot )) > lambdaTheta)continue;
         float ang_pi_rot = th_pi + rot;
-        while(ang_pi_rot >= 360) { ang_pi_rot -= 360; }
-        while(ang_pi_rot < 0) { ang_pi_rot += 360; }
+        if(ang_pi_rot >= 360) { ang_pi_rot -= 360; }
+        if(ang_pi_rot < 0) { ang_pi_rot += 360; }
         float th_diff = kf2->GradTheta.at<float>(vj,uj) - ang_pi_rot;
-        while(th_diff >= 360) { th_diff -= 360; }
-        while(th_diff < 0) { th_diff += 360; }
+        if(th_diff >= 360) { th_diff -= 360; }
+        if(th_diff < 0) { th_diff += 360; }
         if(th_diff > 180) th_diff = 360 - th_diff;
         if(th_diff > lambdaTheta) continue;
 

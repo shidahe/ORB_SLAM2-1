@@ -137,7 +137,7 @@ void ProbabilityMapping::Run()
                 Eigen::Vector3f Pw(kf->SemiDensePointSets_.at<float>(y, 3 * x),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
-                if (kf->depth_sigma_.at<float>(y,x) > 0.02) continue;
+                if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
                 if (kf->depth_map_.at<float>(y,x) > 0.000001) {
                     fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2])
                             << std::endl;
@@ -225,8 +225,9 @@ void ProbabilityMapping::SemiDenseLoop(){
         for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
             if (closestMatches.size() >= covisN)
                 break;
-            if (!closestMatchesAll[idxCov]->isBad())
-                closestMatches.push_back(closestMatchesAll[idxCov]);
+            if (closestMatchesAll[idxCov]->isBad()) continue;
+            if (!closestMatchesAll[idxCov]->MappingIdDelay()) continue;
+            closestMatches.push_back(closestMatchesAll[idxCov]);
         }
         if(closestMatches.size() < covisN) {continue;}
 
@@ -355,8 +356,9 @@ void ProbabilityMapping::SemiDenseLoop(){
         for (size_t idxCov = 0; idxCov < neighborsAll.size(); idxCov++){
             if (neighbors.size() >= covisN)
                 break;
-            if (!neighborsAll[idxCov]->isBad())
-                neighbors.push_back(neighborsAll[idxCov]);
+            if (neighborsAll[idxCov]->isBad()) continue;
+            if (!neighborsAll[idxCov]->MappingIdDelay()) continue;
+            neighbors.push_back(neighborsAll[idxCov]);
         }
         if(neighbors.size() < covisN) {continue;}
 

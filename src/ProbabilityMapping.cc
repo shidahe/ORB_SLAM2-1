@@ -17,6 +17,10 @@
  *        Log: fix a lot of bug, Almost rewrite the code.
  *
  *        author: He Yijia
+ * *
+ *        Version: 1.1
+ *        Created: 05/18/2017
+ *        Author: Shida He
  *
  * =====================================================================================
  */
@@ -37,6 +41,7 @@
 
 
 #define OnlineLoop
+//#define ForceRealTime  //if uncommented, main tracking thread will wait for this thread to finish before processing next frame
 
 
 void saveMatToCsv(cv::Mat data, std::string filename)
@@ -202,7 +207,9 @@ void ProbabilityMapping::TestSemiDenseViewer()
 
 void ProbabilityMapping::SemiDenseLoop(){
 
+#ifdef ForceRealTime
     unique_lock<mutex> lock(mMutexSemiDense);
+#endif
 
     vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
     if(vpKFs.size() < 10){return;}
@@ -425,7 +432,9 @@ void ProbabilityMapping::ApplySigmaThreshold(ORB_SLAM2::KeyFrame* kf){
 }
 
 void ProbabilityMapping::UpdateAllSemiDensePointSet(){
+#ifdef ForceRealTime
     unique_lock<mutex> lock(mMutexSemiDense);
+#endif
     vector<ORB_SLAM2::KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
     if(vpKFs.size() < 10){return;}
 

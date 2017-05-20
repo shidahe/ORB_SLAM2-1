@@ -41,7 +41,7 @@
 
 
 #define OnlineLoop
-//#define ForceRealTime  //if uncommented, main tracking thread will wait for this thread to finish before processing next frame
+#define ForceRealTime  //if uncommented, main tracking thread will wait for this thread to finish before processing next frame
 
 
 void saveMatToCsv(cv::Mat data, std::string filename)
@@ -70,13 +70,17 @@ float bilinear(const cv::Mat& img, const float& y, const float& x)
     }
 */
     //  std::cout<<"image: "<<(float) img.at<T>(y0 , x0 )<<"  "<<(float) img.at<T>(y1 , x1 )<<"  "<< (float)img.at<T>(y1 , x0 )<<"  "<<(float) img.at<T>(y0 , x1 )<<std::endl;
-    float interpolated =
-            img.at<T>(y0 , x0 ) * x0_weight + img.at<T>(y0 , x1)* x1_weight +
-            img.at<T>(y1 , x0 ) * x0_weight + img.at<T>(y1 , x1)* x1_weight +
-            img.at<T>(y0 , x0 ) * y0_weight + img.at<T>(y1 , x0)* y1_weight +
-            img.at<T>(y0 , x1 ) * y0_weight + img.at<T>(y1 , x1)* y1_weight ;
+//    float interpolated =
+//            img.at<T>(y0 , x0 ) * x0_weight + img.at<T>(y0 , x1)* x1_weight +
+//            img.at<T>(y1 , x0 ) * x0_weight + img.at<T>(y1 , x1)* x1_weight +
+//            img.at<T>(y0 , x0 ) * y0_weight + img.at<T>(y1 , x0)* y1_weight +
+//            img.at<T>(y0 , x1 ) * y0_weight + img.at<T>(y1 , x1)* y1_weight ;
+    float interpolated = img.at<T>(y0,x0) * x0_weight * y0_weight +
+                         img.at<T>(y0,x1) * x1_weight * y0_weight +
+                         img.at<T>(y1,x0) * x0_weight * y1_weight +
+                         img.at<T>(y1,x1) * x1_weight * y1_weight;
 
-    return (interpolated * 0.25f);
+    return interpolated;
 }
 
 ProbabilityMapping::ProbabilityMapping(ORB_SLAM2::Map* pMap):mpMap(pMap)
@@ -539,7 +543,7 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
     for(int uj = std::ceil(umin); uj <= std::floor(umax); uj++)// FIXME should use  min and max depth
     {
         vj =-(int)( (a/b)*uj+(c/b));
-        if(vj<0 || vj > kf2->im_.rows ){continue;}
+        if(vj<=0 || vj >= kf2->im_.rows ){continue;}
 
         // condition 1:
         if( kf2->GradImg.at<float>(vj,uj) < lambdaG){continue;}
@@ -569,11 +573,11 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         if(th_diff > 180) th_diff = 360 - th_diff;
         if(th_diff > lambdaTheta) continue;
 
-//        float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
-//        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
+        float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
+        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
 
-        float photometric_err = pixel - kf2->im_.at<uchar>((int)std::round(-((a/b)*uj+(c/b))),uj);
-        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - kf2->GradImg.at<float>((int)std::round(-((a/b)*uj+(c/b))),uj);
+        //float photometric_err = pixel - kf2->im_.at<uchar>((int)std::round(-((a/b)*uj+(c/b))),uj);
+        //float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - kf2->GradImg.at<float>((int)std::round(-((a/b)*uj+(c/b))),uj);
 
         // std::cout<<bilinear<float>(grad2mag,-((a/b)*uj+(c/b)),uj)<<"  grad : "<< grad2mag.at<float>(vj,uj)<<std::endl;
         // std::cout<<bilinear<uchar>(image,-((a/b)*uj+(c/b)),uj)<<"  image : "<< (float)image.at<uchar>(vj,uj)<<std::endl;
@@ -593,12 +597,16 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
     {
 
         uj_plus = best_pixel + 1;
-        vj_plus = (int)std::round(-((a/b)*uj_plus + (c/b)));
         uj_minus = best_pixel - 1;
-        vj_minus = (int)std::round(-((a/b)*uj_minus + (c/b)));
 
-        g = ((float)kf2->im_.at<uchar>(vj_plus, uj_plus) - (float) kf2->im_.at<uchar>(vj_minus, uj_minus)) / 2;
-        q = ( kf2->GradImg.at<float>(vj_plus, uj_plus) -  kf2->GradImg.at<float>(vj_minus, uj_minus)) / 2;
+//        vj_plus = (int)std::round(-((a/b)*uj_plus + (c/b)));
+//        vj_minus = (int)std::round(-((a/b)*uj_minus + (c/b)));
+//        g = ((float)kf2->im_.at<uchar>(vj_plus, uj_plus) - (float) kf2->im_.at<uchar>(vj_minus, uj_minus)) / 2;
+//        q = ( kf2->GradImg.at<float>(vj_plus, uj_plus) -  kf2->GradImg.at<float>(vj_minus, uj_minus)) / 2;
+
+        g = (bilinear<uchar>(kf2->im_,-((a/b)*uj_plus+(c/b)),uj_plus) - bilinear<uchar>(kf2->im_,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
+        q = (bilinear<float>(kf2->GradImg,-((a/b)*uj_plus+(c/b)),uj_plus) -  bilinear<float>(kf2->GradImg,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
+
 /*
      if(vj_plus< 0)   //  if abs(a/b) is large,   a little step for uj, may produce a large change on vj. so there is a bug !!!  vj_plus may <0
      {

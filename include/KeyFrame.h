@@ -128,6 +128,18 @@ public:
     cv::Mat GetCalibrationMatrix() const;
     DBoW2::FeatureVector GetFeatureVector();
     std::vector<float> GetAllPointDepths(); //modeled after: float ComputeSceneMedianDepth(int q = 2);
+    bool MappingIdDelay();
+    void IncreaseMappingId();
+    bool Mapped();
+    bool PoseChanged();
+    void SetPoseChanged(bool bChanged);
+    void Release();
+    // Enable/Disable bad flag changes from semi dense thread
+    void SetNotEraseSemiDense();
+    void SetEraseSemiDense();
+    // Enable/Disable bad flag changes from viewer thread
+    void SetNotEraseDrawer();
+    void SetEraseDrawer();
 
     // The following variables are accesed from only 1 thread or never change (no mutex needed).
 public:
@@ -137,19 +149,19 @@ public:
     cv::Mat rgb_;
     bool semidense_flag_;  // whether this frame have build dense map or not?
     bool interKF_depth_flag_; // for inter kf depth check
-    std::vector<std::vector<ProbabilityMapping::depthHo> > SemiDenseMatrix;
+//    std::vector<std::vector<ProbabilityMapping::depthHo> > SemiDenseMatrix;
     cv::Mat GradImg,GradTheta;
-    double I_stddev;
+    float I_stddev;
     cv::Mat depth_map_;
     cv::Mat depth_sigma_;
-    //std::vector< Eigen::Vector3f > SemiDensePointSets_;
-    cv::Mat SemiDensePointSets_;
+    cv::Mat depth_map_checked_;
     bool poseChanged;
+    std::mutex mMutexSemiDensePoints;
+    cv::Mat SemiDensePointSets_;
     static long unsigned int nNextMappingId;
     long unsigned int mnMappingId;
     std::mutex mMutexMappingId;
-    bool MappingIdDelay();
-    void IncreaseMappingId();
+
 /******************************************/
     //
     static long unsigned int nNextId;
@@ -254,7 +266,11 @@ protected:
     // Bad flags
     bool mbNotErase;
     bool mbToBeErased;
-    bool mbBad;    
+    bool mbBad;
+
+        // semi dense: erase flags for different threads
+        bool mbNotEraseSemiDense;
+        bool mbNotEraseDrawer;
 
     float mHalfBaseline; // Only for visualization
 

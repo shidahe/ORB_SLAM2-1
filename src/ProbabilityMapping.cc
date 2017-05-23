@@ -83,6 +83,54 @@ float bilinear(const cv::Mat& img, const float& y, const float& x)
     return interpolated;
 }
 
+template<typename T>
+float ylinear(const cv::Mat& img, const float& y, const float& x)
+{
+    int x0 = (int)std::floor(x);
+    assert((float)x0 == x);
+    int y0 = (int)std::floor(y);
+    int y1 =  y0 + 1;
+
+    float y0_weight = y1 - y;
+    float y1_weight = y - y0;
+
+    float interpolated = img.at<T>(y0,x0) * y0_weight +
+                         img.at<T>(y1,x0) * y1_weight;
+
+    return interpolated;
+}
+
+template<typename T>
+float yangle(const cv::Mat& img, const float& y, const float& x)
+{
+    int x0 = (int)std::floor(x);
+    assert((float)x0 == x);
+    int y0 = (int)std::floor(y);
+    int y1 =  y0 + 1;
+
+    float y0_weight = y1 - y;
+    float y1_weight = y - y0;
+
+    float a0 = img.at<T>(y0,x0);
+    float a1 = img.at<T>(y1,x0);
+
+    if (abs(a0-a1) < 180){
+        return a0 * y0_weight + a1 * y1_weight;
+    }else{
+        if(a0 < a1){
+            a0 += 360;
+        } else {
+            a1 += 360;
+        }
+        float inter = a0 * y0_weight + a1 * y1_weight;
+        if (inter >= 360){
+            inter -= 360;
+        }
+        return inter;
+    }
+}
+
+
 ProbabilityMapping::ProbabilityMapping(ORB_SLAM2::Map* pMap):mpMap(pMap)
 {
     mbFinishRequested = false; //init
@@ -136,9 +184,11 @@ void ProbabilityMapping::Run()
 
     for (size_t indKF = 0; indKF < vpKFs.size(); indKF++) {
         ORB_SLAM2::KeyFrame* kf = vpKFs[indKF];
-        if( kf->isBad() ) continue;
-        if(! kf->semidense_flag_) continue;
-        if(! kf->interKF_depth_flag_) continue;
+        kf->SetNotEraseSemiDense();
+        if( kf->isBad() || !kf->semidense_flag_ || !kf->interKF_depth_flag_) {
+            kf->SetEraseSemiDense();
+            continue;
+        }
 
         for(size_t y = 0; y< (size_t)kf->im_.rows; y++) {
             for (size_t x = 0; x < (size_t) kf->im_.cols; x++) {
@@ -147,12 +197,14 @@ void ProbabilityMapping::Run()
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
                                    kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
                 if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
-                if (kf->depth_map_.at<float>(y,x) > 0.000001) {
+//                if (kf->depth_map_.at<float>(y,x) > 0.000001) {
+                if (kf->depth_map_checked_.at<float>(y,x) > 0.000001) {
                     fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2])
                             << std::endl;
                 }
             }
         }
+        kf->SetEraseSemiDense();
 
     }
 
@@ -201,7 +253,7 @@ void ProbabilityMapping::TestSemiDenseViewer()
             }
             y = y+4;
         }
-        pKF->SemiDenseMatrix = temp_ho;
+//        pKF->SemiDenseMatrix = temp_ho;
         pKF->semidense_flag_ = true;
     }
     cout<<"semidense_Info:    vpKFs.size()--> "<<vpKFs.size()<<std::endl;
@@ -221,14 +273,13 @@ void ProbabilityMapping::SemiDenseLoop(){
     for(size_t i =0;i < vpKFs.size(); i++ )
     {
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
-        if(kf->isBad() || kf->semidense_flag_)
-            continue;
-        // 10 keyframe delay
-        if (!kf->MappingIdDelay())
-            continue;
 
-//        std::vector<ORB_SLAM2::KeyFrame*> closestMatches = kf->GetBestCovisibilityKeyFrames(covisN);
-//        if(closestMatches.size() < covisN) {continue;}
+        kf->SetNotEraseSemiDense();
+
+        if(kf->isBad() || kf->semidense_flag_ || !kf->MappingIdDelay()) {
+            kf->SetEraseSemiDense();
+            continue;
+        }
 
         // use covisN good neighbor kfs
         std::vector<ORB_SLAM2::KeyFrame*> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
@@ -236,11 +287,21 @@ void ProbabilityMapping::SemiDenseLoop(){
         for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
             if (closestMatches.size() >= covisN)
                 break;
-            if (closestMatchesAll[idxCov]->isBad()) continue;
-            if (!closestMatchesAll[idxCov]->MappingIdDelay()) continue;
-            closestMatches.push_back(closestMatchesAll[idxCov]);
+            ORB_SLAM2::KeyFrame* kfCM = closestMatchesAll[idxCov];
+            kfCM->SetNotEraseSemiDense();
+            if (kfCM->isBad() || !kfCM->Mapped()) {
+                kfCM->SetEraseSemiDense();
+                continue;
+            }
+            closestMatches.push_back(kfCM);
         }
-        if(closestMatches.size() < covisN) {continue;}
+        if(closestMatches.size() < covisN) {
+            for (size_t idxCov = 0; idxCov < closestMatches.size(); idxCov++){
+                closestMatches[idxCov]->SetEraseSemiDense();
+            }
+            kf->SetEraseSemiDense();
+            continue;
+        }
 
         // start timing
         struct timespec start, finish;
@@ -265,7 +326,7 @@ void ProbabilityMapping::SemiDenseLoop(){
         StereoSearchConstraints(kf, &min_depth, &max_depth);
 
         cv::Mat image = kf->GetImage();
-        cv::Mat image_debug = image.clone();
+//        cv::Mat image_debug = image.clone();
 
         std::vector <cv::Mat> F;
         F.clear();
@@ -282,7 +343,7 @@ void ProbabilityMapping::SemiDenseLoop(){
             for(int x = 0+2; x< image.cols-2; x++)
             {
 
-                if(kf->GradImg.at<float>(y,x) < lambdaG){continue;}
+                if(kf->GradImg.at<float>(y,x) <= lambdaG){continue;}
                 float pixel = (float)image.at<uchar>(y,x); //maybe it should be cv::Mat
 
                 std::vector<depthHo> depth_ho;
@@ -292,10 +353,11 @@ void ProbabilityMapping::SemiDenseLoop(){
                     ORB_SLAM2::KeyFrame* kf2 = closestMatches[ j ];
                     cv::Mat F12 = F[j];
 
-                    float rot = rotIs[kf2];
+                    float rot = kf->GradTheta.at<float>(y,x);
+                    float rot2 = rotIs[kf2];
                     float best_u(0.0),best_v(0.0);
                     depthHo dh;
-                    EpipolarSearch(kf, kf2, x, y, pixel, min_depth, max_depth, &dh,F12,best_u,best_v,kf->GradTheta.at<float>(y,x),rot);
+                    EpipolarSearch(kf, kf2, x, y, pixel, min_depth, max_depth, &dh,F12,best_u,best_v,rot,rot2);
 
                     if (dh.supported && 1/dh.depth > 0.0)
                     {
@@ -329,6 +391,11 @@ void ProbabilityMapping::SemiDenseLoop(){
 
         kf->semidense_flag_ = true;
 
+        for (size_t idxCov = 0; idxCov < closestMatches.size(); idxCov++){
+            closestMatches[idxCov]->SetEraseSemiDense();
+        }
+        kf->SetEraseSemiDense();
+
         // timing
         clock_gettime(CLOCK_MONOTONIC, &finish);
         duration = ( finish.tv_sec - start.tv_sec );
@@ -336,67 +403,65 @@ void ProbabilityMapping::SemiDenseLoop(){
         std::cout<<"depth reconstruction took: "<< duration << "s" << std::endl;
 
         // only compute depth for one kf in one iteration in online mode
-#ifdef OnlineLoop
-        break;
-#endif
+//#ifdef OnlineLoop
+//        break;
+//#endif
         //cv::imwrite("image.png",image);
         //pcl::io::savePLYFileBinary ("kf.ply", *cloudPtr);
         //cv::imwrite("grad_image.png",image_debug);
 
     }
 
-    int num_inter_checked = 0;
-    int num_all_neigbors = 0;
-
     for(size_t i =0;i < vpKFs.size(); i++ )
     {
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
-        if (kf->isBad() || kf->interKF_depth_flag_)continue;
-        // 10 keyframe delay
-        if (kf->nNextId - kf->mnId < 10)
-            continue;
 
-        if (!kf->semidense_flag_) continue;
+        kf->SetNotEraseSemiDense();
+
+        if(kf->isBad() || kf->interKF_depth_flag_ || !kf->MappingIdDelay() || !kf->semidense_flag_) {
+            kf->SetEraseSemiDense();
+            continue;
+        }
 
         // option1: could just be the best covisibility keyframes
-//        std::vector<ORB_SLAM2::KeyFrame*> neighbors = kf->GetBestCovisibilityKeyFrames(covisN);
-//        if(neighbors.size() < covisN) {continue;}
 
-        std::vector<ORB_SLAM2::KeyFrame*> neighbors;
-        std::vector<ORB_SLAM2::KeyFrame*> neighborsAll = kf->GetVectorCovisibleKeyFrames();
-        for (size_t idxCov = 0; idxCov < neighborsAll.size(); idxCov++){
-            if (neighbors.size() >= covisN)
+        std::vector<ORB_SLAM2::KeyFrame*> closestMatchesAll = kf->GetVectorCovisibleKeyFrames();
+        std::vector<ORB_SLAM2::KeyFrame*> closestMatches;
+        for (size_t idxCov = 0; idxCov < closestMatchesAll.size(); idxCov++){
+            if (closestMatches.size() >= covisN)
                 break;
-            if (neighborsAll[idxCov]->isBad()) continue;
-            if (!neighborsAll[idxCov]->MappingIdDelay()) continue;
-            neighbors.push_back(neighborsAll[idxCov]);
+            ORB_SLAM2::KeyFrame* kfCM = closestMatchesAll[idxCov];
+            kfCM->SetNotEraseSemiDense();
+            if (kfCM->isBad() || !kfCM->Mapped() || !kfCM->semidense_flag_) {
+                kfCM->SetEraseSemiDense();
+                continue;
+            }
+            closestMatches.push_back(kfCM);
         }
-        if(neighbors.size() < covisN) {continue;}
-
+        if(closestMatches.size() < covisN) {
+            for (size_t idxCov = 0; idxCov < closestMatches.size(); idxCov++){
+                closestMatches[idxCov]->SetEraseSemiDense();
+            }
+            kf->SetEraseSemiDense();
+            continue;
+        }
 
         // start timing
         struct timespec start, finish;
         double duration;
         clock_gettime(CLOCK_MONOTONIC, &start);
 
-
-        // neighbors have depth reconstructed
-        int num_depth_kf = 0;
-        for (size_t j = 0; j < neighbors.size(); j++){
-            if (neighbors[j]->semidense_flag_) {num_depth_kf++;}
-        }
-
-        num_inter_checked++;
-        if (num_depth_kf < covisN) continue;
-        num_all_neigbors++;
-
         std::cout << "InterKeyFrameDepthChecking " << i << std::endl;
-        InterKeyFrameDepthChecking(kf,neighbors);
+        InterKeyFrameDepthChecking(kf,closestMatches);
 
         UpdateSemiDensePointSet(kf);
 
         kf->interKF_depth_flag_ = true;
 
+        for (size_t idxCov = 0; idxCov < closestMatches.size(); idxCov++){
+            closestMatches[idxCov]->SetEraseSemiDense();
+        }
+        kf->SetEraseSemiDense();
 
         //timing
         clock_gettime(CLOCK_MONOTONIC, &finish);
@@ -409,8 +474,6 @@ void ProbabilityMapping::SemiDenseLoop(){
 //        break;
 //#endif
     }
-
-//    std::cout << "all neighbors reconstructed KF: " << num_all_neigbors << "/" << num_inter_checked << std::endl;
 
 }
 
@@ -444,20 +507,23 @@ void ProbabilityMapping::UpdateAllSemiDensePointSet(){
 
     for (size_t i = 0; i < vpKFs.size(); i++){
         ORB_SLAM2::KeyFrame* kf = vpKFs[i];
-        if(kf->isBad() || kf->semidense_flag_)
+        kf->SetNotEraseSemiDense();
+        if( kf->isBad() || !kf->semidense_flag_ || !kf->interKF_depth_flag_ || !kf->MappingIdDelay()) {
+            kf->SetEraseSemiDense();
             continue;
-        // 10 keyframe delay
-        if (kf->nNextId - kf->mnId < 10)
-            continue;
-        if (kf->poseChanged) {
-            UpdateSemiDensePointSet(kf);
-            kf->poseChanged = false;
         }
+
+        if (kf->PoseChanged()) {
+            UpdateSemiDensePointSet(kf);
+            kf->SetPoseChanged(false);
+        }
+        kf->SetEraseSemiDense();
     }
 }
 
 
 void ProbabilityMapping::UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf){
+    unique_lock<mutex> lock(kf->mMutexSemiDensePoints);
 
 #pragma omp parallel for schedule(dynamic) collapse(2)
     for(int y = 0+2; y < kf->im_.rows-2; y++)
@@ -465,7 +531,8 @@ void ProbabilityMapping::UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf){
         for(int x = 0+2; x< kf->im_.cols-2; x++)
         {
 
-            if (kf->depth_map_.at<float>(y,x) < 0.000001) {
+//            if (kf->depth_map_.at<float>(y,x) < 0.000001) {
+            if (kf->depth_map_checked_.at<float>(y,x) < 0.000001) {
                 kf->SemiDensePointSets_.at<float>(y,3*x+0) = 0.0;
                 kf->SemiDensePointSets_.at<float>(y,3*x+1) = 0.0;
                 kf->SemiDensePointSets_.at<float>(y,3*x+2) = 0.0;
@@ -477,7 +544,8 @@ void ProbabilityMapping::UpdateSemiDensePointSet(ORB_SLAM2::KeyFrame* kf){
             // sigma threshold: mean around 0.02, max 1.0+
 //                if(kf->depth_sigma_.at<float>(y,x) > 0.1) continue;
 
-            float inv_d = kf->depth_map_.at<float>(y,x);
+            float inv_d = kf->depth_map_checked_.at<float>(y,x);
+//            float inv_d = kf->depth_map_.at<float>(y,x);
             float Z = 1/inv_d ;
             float X = Z *(x- kf->cx ) / kf->fx;
             float Y = Z *(y- kf->cy ) / kf->fy;
@@ -529,61 +597,75 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
 
     if((a/b)< -4 || a/b> 4) return;   // if epipolar direction is approximate to perpendicular, we discard it.  May be product wrong match.
 
-    float old_err = 1000000.0;
+    float old_err = 100000.0;
     float best_photometric_err = 0.0;
     float best_gradient_modulo_err = 0.0;
     int best_pixel = 0;
 
-    int vj,uj_plus,vj_plus,uj_minus,vj_minus;
+    int uj_plus,uj_minus;
+    float vj,vj_plus,vj_minus;
     float g, q,denomiator ,ustar , ustar_var;
 
     float umin(0.0),umax(0.0);
     GetSearchRange(umin,umax,x,y,min_depth,max_depth,kf1,kf2);
     //for(int uj = 0; uj < image.cols; uj++)// FIXME should use  min and max depth
-    for(int uj = std::ceil(umin); uj <= std::floor(umax); uj++)// FIXME should use  min and max depth
+    for(int uj = (int)std::ceil(umin); uj <= std::floor(umax); uj++)// FIXME should use  min and max depth
     {
-        vj =-(int)( (a/b)*uj+(c/b));
-        if(vj<=0 || vj >= kf2->im_.rows ){continue;}
+        vj = -((a/b)*uj+(c/b));
+        if(std::floor(vj) < 0 || std::ceil(vj) >= kf2->im_.rows ){continue;}
+
+        uj_plus = uj + 1;
+        uj_minus = uj - 1;
+
+        if(uj_plus >= kf2->im_.cols) {continue;}
+        if(uj_minus < 0) {continue;}
+
+        vj_plus = -((a/b)*uj_plus + (c/b));
+        vj_minus = -((a/b)*uj_minus + (c/b));
+
+        if(std::floor(vj_plus) < 0 || std::ceil(vj_plus) >= kf2->im_.rows ){continue;}
+        if(std::floor(vj_minus) < 0 || std::ceil(vj_minus) >= kf2->im_.rows ){continue;}
 
         // condition 1:
-        if( kf2->GradImg.at<float>(vj,uj) < lambdaG){continue;}
+//        if( kf2->GradImg.at<float>(vj,uj) < lambdaG){continue;}
+        if( ylinear<float>(kf2->GradImg,vj,uj) <= lambdaG){continue;}
 
         // condition 2:
         float th_epipolar_line = cv::fastAtan2(-a/b,1);
-        float temp_gradth =  kf2->GradTheta.at<float>(vj,uj);
-//        if( temp_gradth > 270) temp_gradth =  temp_gradth - 360;
-//        if( temp_gradth > 90 &&  temp_gradth<=270)
-//            temp_gradth =  temp_gradth - 180;
-//        if(th_epipolar_line>270) th_epipolar_line = th_epipolar_line - 360;
+//        float temp_gradth =  kf2->GradTheta.at<float>(vj,uj);
+        float temp_gradth =  yangle<float>(kf2->GradTheta,vj,uj);
         float ang_diff = temp_gradth - th_epipolar_line;
         if(ang_diff >= 360) { ang_diff -= 360; }
         if(ang_diff < 0) { ang_diff += 360; }
         if(ang_diff > 180) ang_diff = 360 - ang_diff;
         if(ang_diff > 90) ang_diff = 180 - ang_diff;
-        if(ang_diff > lambdaL) { continue; }
+        if(ang_diff >= lambdaL) { continue; }
 
         // condition 3:
-        //if(abs(th_grad - ( th_pi + th_rot )) > lambdaTheta)continue;
         float ang_pi_rot = th_pi + rot;
         if(ang_pi_rot >= 360) { ang_pi_rot -= 360; }
         if(ang_pi_rot < 0) { ang_pi_rot += 360; }
-        float th_diff = kf2->GradTheta.at<float>(vj,uj) - ang_pi_rot;
+//        float th_diff = kf2->GradTheta.at<float>(vj,uj) - ang_pi_rot;
+        float th_diff = temp_gradth - ang_pi_rot;
         if(th_diff >= 360) { th_diff -= 360; }
         if(th_diff < 0) { th_diff += 360; }
         if(th_diff > 180) th_diff = 360 - th_diff;
-        if(th_diff > lambdaTheta) continue;
+        if(th_diff >= lambdaTheta) continue;
 
-        float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
-        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
+        float photometric_err = pixel - ylinear<uchar>(kf2->im_,vj,uj);
+        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - ylinear<float>( kf2->GradImg,vj,uj);
 
-        //float photometric_err = pixel - kf2->im_.at<uchar>((int)std::round(-((a/b)*uj+(c/b))),uj);
-        //float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - kf2->GradImg.at<float>((int)std::round(-((a/b)*uj+(c/b))),uj);
+//        float photometric_err = pixel - bilinear<uchar>(kf2->im_,-((a/b)*uj+(c/b)),uj);
+//        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - bilinear<float>( kf2->GradImg,-((a/b)*uj+(c/b)),uj);
+
+//        float photometric_err = pixel - kf2->im_.at<uchar>(vj,uj);
+//        float gradient_modulo_err = kf1->GradImg.at<float>(y,x)  - kf2->GradImg.at<float>(vj,uj);
 
         // std::cout<<bilinear<float>(grad2mag,-((a/b)*uj+(c/b)),uj)<<"  grad : "<< grad2mag.at<float>(vj,uj)<<std::endl;
         // std::cout<<bilinear<uchar>(image,-((a/b)*uj+(c/b)),uj)<<"  image : "<< (float)image.at<uchar>(vj,uj)<<std::endl;
 
         //float err = (photometric_err*photometric_err + (gradient_modulo_err*gradient_modulo_err)/THETA)/(image_stddev.at<double>(0,0)*image_stddev.at<double>(0,0));
-        float err = (photometric_err*photometric_err  + (gradient_modulo_err*gradient_modulo_err)/THETA);
+        float err = (photometric_err*photometric_err  + (gradient_modulo_err*gradient_modulo_err)/(float)THETA);
         if(err < old_err)
         {
             best_pixel = uj;
@@ -593,19 +675,23 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         }
     }
 
-    if(old_err < 1000000.0)
+    if(old_err < 100000.0)
     {
 
         uj_plus = best_pixel + 1;
         uj_minus = best_pixel - 1;
 
-//        vj_plus = (int)std::round(-((a/b)*uj_plus + (c/b)));
-//        vj_minus = (int)std::round(-((a/b)*uj_minus + (c/b)));
+        vj_plus = -((a/b)*uj_plus + (c/b));
+        vj_minus = -((a/b)*uj_minus + (c/b));
+
 //        g = ((float)kf2->im_.at<uchar>(vj_plus, uj_plus) - (float) kf2->im_.at<uchar>(vj_minus, uj_minus)) / 2;
 //        q = ( kf2->GradImg.at<float>(vj_plus, uj_plus) -  kf2->GradImg.at<float>(vj_minus, uj_minus)) / 2;
 
-        g = (bilinear<uchar>(kf2->im_,-((a/b)*uj_plus+(c/b)),uj_plus) - bilinear<uchar>(kf2->im_,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
-        q = (bilinear<float>(kf2->GradImg,-((a/b)*uj_plus+(c/b)),uj_plus) -  bilinear<float>(kf2->GradImg,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
+//        g = (bilinear<uchar>(kf2->im_,-((a/b)*uj_plus+(c/b)),uj_plus) - bilinear<uchar>(kf2->im_,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
+//        q = (bilinear<float>(kf2->GradImg,-((a/b)*uj_plus+(c/b)),uj_plus) -  bilinear<float>(kf2->GradImg,-((a/b)*uj_minus+(c/b)),uj_minus)) / 2;
+
+        g = (ylinear<uchar>(kf2->im_,vj_plus,uj_plus) - ylinear<uchar>(kf2->im_,vj_minus,uj_minus)) / 2;
+        q = (ylinear<float>(kf2->GradImg,vj_plus,uj_plus) -  ylinear<float>(kf2->GradImg,vj_minus,uj_minus)) / 2;
 
 /*
      if(vj_plus< 0)   //  if abs(a/b) is large,   a little step for uj, may produce a large change on vj. so there is a bug !!!  vj_plus may <0
@@ -618,8 +704,8 @@ void ProbabilityMapping::EpipolarSearch(ORB_SLAM2::KeyFrame* kf1, ORB_SLAM2::Key
         //   g = (bilinear<uchar>(image,-((a/b)*uj_plus+(c/b)),uj_plus) - bilinear<uchar>(image,-((a/b)*uj_minus+(c/b)),uj_minus))/2.0;
         //   g = (bilinear<float>(grad2mag,-((a/b)*uj_plus+(c/b)),uj_plus) - bilinear<float>(grad2mag,-((a/b)*uj_minus+(c/b)),uj_minus))/2.0;
 
-        denomiator = (g*g + (1/THETA)*q*q);
-        ustar = best_pixel + (g*best_photometric_err + (1/THETA)*q*best_gradient_modulo_err)/denomiator;
+        denomiator = (g*g + (1/(float)THETA)*q*q);
+        ustar = best_pixel + (g*best_photometric_err + (1/(float)THETA)*q*best_gradient_modulo_err)/denomiator;
         ustar_var = (2*kf2->I_stddev*kf2->I_stddev/denomiator);
         //std::cout<< "g:"<<g<< "  q:"<<q<<"  I_err:"<<best_photometric_err<<"  g_err"<<best_gradient_modulo_err<< "   denomiator:"<<denomiator<< "  ustar:"<<ustar<<std::endl;
 
@@ -811,7 +897,7 @@ void ProbabilityMapping::IntraKeyFrameDepthGrowing(cv::Mat& depth_map, cv::Mat& 
 
             if (depth_map.at<float>(py,px) < 0.000001)  // if  d ==0.0 : grow the reconstruction getting more density
             {
-                if(gradimg.at<float>(py,px)<lambdaG) continue;
+                if(gradimg.at<float>(py,px)<=lambdaG) continue;
                 //search supported  by at least 2 of its 8 neighbours pixels
                 std::vector< std::pair<float,float> > supported;
 
@@ -910,6 +996,10 @@ void ProbabilityMapping::InverseDepthHypothesisFusion(const std::vector<depthHo>
         compatible_ho_temp.clear();
         for (size_t b=0; b < h.size(); b++)
         {
+            if (a==b) {
+                compatible_ho_temp.push_back(h[b]);
+                continue;
+            }
             if (ChiTest(h[a], h[b], &chi))
             {compatible_ho_temp.push_back(h[b]);}// test if the hypotheses a and b are compatible
         }
@@ -926,7 +1016,7 @@ void ProbabilityMapping::InverseDepthHypothesisFusion(const std::vector<depthHo>
     }
 
     // calculate the parameters of the inverse depth distribution by fusing hypotheses
-    if (compatible_ho.size() >= lambdaN) {
+    if (compatible_ho.size() > lambdaN) {
         GetFusion(compatible_ho, dist, &chi);
     }
 }
@@ -1187,7 +1277,8 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
             // don't retain the inverse depth distribution of this pixel if not enough support in neighbor keyframes
             if (compatible_neighbor_keyframes_count < lambdaN )
             {
-                currentKf->depth_map_.at<float>(py,px) = 0.0;
+                currentKf->depth_map_checked_.at<float>(py,px) = 0.0;
+//                currentKf->depth_map_.at<float>(py,px) = 0.0;
 //                currentKf->depth_sigma_.at<float>(py,px) = 0.0;
             }
             else {
@@ -1218,7 +1309,8 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
                 float dpDelta = Jtr0.at<float>(0,0) / JtJ.at<float>(0,0);
 
 //                std::cout << "dp + dpDelta: " << dp << " + " << dpDelta << std::endl;
-                currentKf->depth_map_.at<float>(py,px) = 1/ (dp + dpDelta);
+                currentKf->depth_map_checked_.at<float>(py,px) = 1/ (dp + dpDelta);
+//                currentKf->depth_map_.at<float>(py,px) = 1/ (dp + dpDelta);
             }
 
         } // for py = 0...im.cols-1
@@ -1588,8 +1680,8 @@ void ProbabilityMapping::GetSearchRange(float& umin, float& umax, int px, int py
 
     if(umin<0) umin = 0;
     if(umax<0) umax = 0;
-    if(umin>kf->im_.cols ) umin = kf->im_.cols;
-    if(umax>kf->im_.cols)  umax = kf->im_.cols;
+    if(umin>kf->im_.cols ) umin = kf->im_.cols-1;
+    if(umax>kf->im_.cols)  umax = kf->im_.cols-1;
 }
 
 bool ProbabilityMapping::ChiTest(const depthHo& ha, const depthHo& hb, float* chi_val) {

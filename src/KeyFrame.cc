@@ -43,8 +43,7 @@ long unsigned int KeyFrame::nNextMappingId=0;
     mnMaxY(F.mnMaxY), mK(F.mK), mvpMapPoints(F.mvpMapPoints), mpKeyFrameDB(pKFDB),
     mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
     mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap), im_(F.im_.clone()),rgb_(F.rgb_.clone()),
-    semidense_flag_(false),interKF_depth_flag_(false),poseChanged(false),
-    SemiDenseMatrix(im_.rows, std::vector<ProbabilityMapping:: depthHo>(im_.cols, ProbabilityMapping::depthHo()) )
+    semidense_flag_(false),interKF_depth_flag_(false),poseChanged(false),mbNotEraseSemiDense(false),mbNotEraseDrawer(false)
 {
     mnId=nNextId++;
 
@@ -64,7 +63,7 @@ long unsigned int KeyFrame::nNextMappingId=0;
      cv::Mat image_mean,image_stddev,gradx,grady;
 //     cv::meanStdDev(im_,image_mean,image_stddev);
 //     I_stddev = image_stddev.at<double>(0,0);
-     I_stddev = sigmaI;
+     I_stddev = (float)sigmaI;
      image_mean.release();
      image_stddev.release();
 
@@ -78,6 +77,7 @@ long unsigned int KeyFrame::nNextMappingId=0;
      grady.release();
 
       depth_map_ = cv::Mat::zeros(im_.rows, im_.cols, CV_32F);
+      depth_map_checked_ = cv::Mat::zeros(im_.rows, im_.cols, CV_32F);
       depth_sigma_ = cv::Mat::zeros(im_.rows, im_.cols, CV_32F);
       SemiDensePointSets_ = cv::Mat::zeros(im_.rows, im_.cols, CV_32FC3);
     //SemiDenseMatrix = new std::vector<std::vector<ProbabilityMapping::depthHo> > (im_.rows, std::vector<ProbabilityMapping:: depthHo>(im_.cols, ProbabilityMapping::depthHo()) );
@@ -485,7 +485,7 @@ void KeyFrame::SetBadFlag()
         unique_lock<mutex> lock(mMutexConnections);
         if(mnId==0)
             return;
-        else if(mbNotErase)
+        else if(mbNotErase || mbNotEraseSemiDense || mbNotEraseDrawer)  //semi dense: prevent erasing when flags on
         {
             mbToBeErased = true;
             return;
@@ -571,6 +571,9 @@ void KeyFrame::SetBadFlag()
 
     mpMap->EraseKeyFrame(this);
     mpKeyFrameDB->erase(this);
+
+    //semi dense: release some memory
+    Release();
 }
 
 bool KeyFrame::isBad()
@@ -781,6 +784,77 @@ vector<float> KeyFrame::GetAllPointDepths()
     void KeyFrame::IncreaseMappingId(){
         unique_lock<mutex> lock(mMutexMappingId);
         mnMappingId = nNextMappingId++;
+    }
+
+    bool KeyFrame::Mapped(){
+        unique_lock<mutex> lock(mMutexMappingId);
+        return (mnMappingId != 0);
+    }
+
+
+    bool KeyFrame::PoseChanged(){
+        unique_lock<mutex> lock(mMutexPose);
+        return poseChanged;
+    }
+
+    void KeyFrame::SetPoseChanged(bool bChanged){
+        unique_lock<mutex> lock(mMutexPose);
+        poseChanged = bChanged;
+    }
+
+    void KeyFrame::Release(){
+        im_.release();
+        rgb_.release();
+        depth_map_.release();
+        depth_map_checked_.release();
+        depth_sigma_.release();
+        GradImg.release();
+        GradTheta.release();
+        SemiDensePointSets_.release();
+    }
+
+    void KeyFrame::SetNotEraseSemiDense()
+    {
+        unique_lock<mutex> lock(mMutexConnections);
+        mbNotEraseSemiDense = true;
+    }
+
+    void KeyFrame::SetEraseSemiDense()
+    {
+        {
+            unique_lock<mutex> lock(mMutexConnections);
+            if(mspLoopEdges.empty())
+            {
+                mbNotEraseSemiDense = false;
+            }
+        }
+
+        if(mbToBeErased)
+        {
+            SetBadFlag();
+        }
+    }
+
+    void KeyFrame::SetNotEraseDrawer()
+    {
+        unique_lock<mutex> lock(mMutexConnections);
+        mbNotEraseDrawer = true;
+    }
+
+    void KeyFrame::SetEraseDrawer()
+    {
+        {
+            unique_lock<mutex> lock(mMutexConnections);
+            if(mspLoopEdges.empty())
+            {
+                mbNotEraseDrawer = false;
+            }
+        }
+
+        if(mbToBeErased)
+        {
+            SetBadFlag();
+        }
     }
 
 } //namespace ORB_SLAM

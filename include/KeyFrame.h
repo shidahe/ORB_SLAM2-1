@@ -161,6 +161,7 @@ public:
     static long unsigned int nNextMappingId;
     long unsigned int mnMappingId;
     std::mutex mMutexMappingId;
+    bool mbRGB;
 
 /******************************************/
     //

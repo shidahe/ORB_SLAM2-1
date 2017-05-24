@@ -47,9 +47,6 @@ public:
     void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
 
 private:
-
-    bool mbRGB;
-
     float mKeyFrameSize;
     float mKeyFrameLineWidth;
     float mGraphLineWidth;

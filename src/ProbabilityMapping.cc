@@ -195,14 +195,30 @@ void ProbabilityMapping::Run()
         for(size_t y = 0; y< (size_t)kf->im_.rows; y++) {
             for (size_t x = 0; x < (size_t) kf->im_.cols; x++) {
 
-                Eigen::Vector3f Pw(kf->SemiDensePointSets_.at<float>(y, 3 * x),
-                                   kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
-                                   kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
                 if (kf->depth_sigma_.at<float>(y,x) > 0.01) continue;
 //                if (kf->depth_map_.at<float>(y,x) > 0.000001) {
                 if (kf->depth_map_checked_.at<float>(y,x) > 0.000001) {
-                    fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2])
-                            << std::endl;
+
+                    Eigen::Vector3f Pw(kf->SemiDensePointSets_.at<float>(y, 3 * x),
+                                       kf->SemiDensePointSets_.at<float>(y, 3 * x + 1),
+                                       kf->SemiDensePointSets_.at<float>(y, 3 * x + 2));
+                    float vr, vg, vb;
+                    if(kf->rgb_.channels() == 3) {
+                        float b = kf->rgb_.at<uchar>(y, 3*x) / 255.0;
+                        float g = kf->rgb_.at<uchar>(y, 3*x+1) / 255.0;
+                        float r = kf->rgb_.at<uchar>(y, 3*x+2) / 255.0;
+                        if (kf->mbRGB) {
+                            vr = r; vg = g; vb = b;
+                        } else {
+                            vr = b; vg = g; vb = r;
+                        }
+                    } else {
+                        float gray = kf->rgb_.at<uchar>(y, x) / 255.0;
+                        vr = gray; vg = gray; vb = gray;
+                    }
+
+                    fileOut << "v " + std::to_string(Pw[0]) + " " + std::to_string(Pw[1]) + " " + std::to_string(Pw[2]) + " "
+                            + std::to_string(vr) + " " << std::to_string(vg) + " " + std::to_string(vb) << std::endl;
                 }
             }
         }

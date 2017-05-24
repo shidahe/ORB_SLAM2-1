@@ -43,7 +43,8 @@ long unsigned int KeyFrame::nNextMappingId=0;
     mnMaxY(F.mnMaxY), mK(F.mK), mvpMapPoints(F.mvpMapPoints), mpKeyFrameDB(pKFDB),
     mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mpParent(NULL), mbNotErase(false),
     mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb/2), mpMap(pMap), im_(F.im_.clone()),rgb_(F.rgb_.clone()),
-    semidense_flag_(false),interKF_depth_flag_(false),poseChanged(false),mbNotEraseSemiDense(false),mbNotEraseDrawer(false)
+    semidense_flag_(false),interKF_depth_flag_(false),poseChanged(false),mbNotEraseSemiDense(false),
+    mbNotEraseDrawer(false),mbRGB(F.mbRGB)
 {
     mnId=nNextId++;
 

@@ -39,9 +39,6 @@ MapDrawer::MapDrawer(Map* pMap, const string &strSettingPath):mpMap(pMap)
     mPointSize = fSettings["Viewer.PointSize"];
     mCameraSize = fSettings["Viewer.CameraSize"];
     mCameraLineWidth = fSettings["Viewer.CameraLineWidth"];
-
-    int nRGB = fSettings["Camera.RGB"];
-    mbRGB = nRGB;
 }
 
 void MapDrawer::DrawMapPoints()
@@ -121,7 +118,7 @@ void MapDrawer::DrawSemiDense(const double sigma)
                         float b = kf->rgb_.at<uchar>(y, 3*x) / 255.0;
                         float g = kf->rgb_.at<uchar>(y, 3*x+1) / 255.0;
                         float r = kf->rgb_.at<uchar>(y, 3*x+2) / 255.0;
-                        if (mbRGB) {
+                        if (kf->mbRGB) {
                             glColor3f(r, g, b);
                         } else {
                             glColor3f(b, g, r);

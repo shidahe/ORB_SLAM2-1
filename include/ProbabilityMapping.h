@@ -30,11 +30,13 @@
 
 #include <cstdlib>
 #include <stdio.h>
+#include <string.h>
 #include <vector>
 #include <numeric>
 //#include <opencv2/opencv.hpp>
 #include <Eigen/Core>
 #include <mutex>
+#include "Thirdparty/EDLines/LS.h"
 
 #define covisN 7
 #define sigmaI 20

@@ -255,15 +255,18 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     }
 
     // undistort image
-    cv::Mat imu;
-    cv::undistort(im,imu,mK,mDistCoef);
+    cv::Mat rgb_imu;
+    cv::undistort(im,rgb_imu,mK,mDistCoef);
+
+    cv::Mat gray_imu;
+    cv::undistort(mImGray,gray_imu,mK,mDistCoef);
 
     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
         //mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
-      mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,imu);
+      mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,gray_imu,rgb_imu);
     else
         //mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
-        mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,imu);
+        mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,gray_imu,rgb_imu);
 
     Track();
 

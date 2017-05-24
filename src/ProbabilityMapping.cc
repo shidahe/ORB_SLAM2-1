@@ -43,6 +43,8 @@
 #define OnlineLoop
 #define ForceRealTime  //if uncommented, main tracking thread will wait for this thread to finish before processing next frame
 
+/// Function prototype for DetectEdgesByED exported by EDLinesLib.a
+LS *DetectLinesByED(unsigned char *srcImg, int width, int height, int *pNoLines);
 
 void saveMatToCsv(cv::Mat data, std::string filename)
 {
@@ -1170,12 +1172,11 @@ void ProbabilityMapping::InterKeyFrameDepthChecking(ORB_SLAM2::KeyFrame* current
     for (int py = 2; py <rows-2; py++) {
         for (int px = 2; px < cols-2; px++) {
 
-            if (currentKf->depth_map_.at<float>(py,px) < 0.000001) continue;   //  if d == 0.0  continue;
-
-//            if (currentKf->depth_sigma_.at<float>(py,px) > 0.02) {
-//                currentKf->depth_map_.at<float>(py,px) = 0.0;
-//                continue;
-//            }
+            //  if d == 0.0  continue;
+            if (currentKf->depth_map_.at<float>(py,px) < 0.000001) { 
+                currentKf->depth_map_checked_.at<float>(py,px) = 0.0;
+                continue;
+            }
 
             float depthp = currentKf->depth_map_.at<float>(py,px);
             // count of neighboring keyframes in which there is at least one compatible pixel
